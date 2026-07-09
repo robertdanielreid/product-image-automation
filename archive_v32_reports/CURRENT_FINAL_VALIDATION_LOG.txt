@@ -1,0 +1,819 @@
+{
+  "scope": 20076,
+  "expected": 20076,
+  "approvedAndMaterialized": 0,
+  "failureCount": 20076,
+  "regionalApprovedCounts": {
+    "ca": 0,
+    "eu": 0,
+    "uk": 0,
+    "us": 0
+  },
+  "pass": false,
+  "failureReasonCounts": {
+    "missing acquisition result": 20076
+  },
+  "failuresPreview": [
+    [
+      "ca:ancient-minerals-magnesium-and-zinc-cream-deodorant-0c5e156c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-bath-flakes-cae2c99e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-bath-flakes-forest-calm-f82d4db0:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-bath-flakes-ultra-b110107f:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-gel-057e0b65:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-gel-ultra-ac78fdbd:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-lotion-280dfda8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-lotion-melatonin-f293712f:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-lotion-ultra-5647592b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-oil-a5c5509f:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnesium-oil-ultra-2ecf7d82:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:ancient-minerals-magnetic-clay-bath-de27fbb9:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-5-htp-0922680d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-5-htp-extra-strength-c74d354b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-acta-resveratrol-4fe964da:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-active-green-tea-43264080:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-advanced-b-complex-2fe9c151:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-advanced-b-complex-ultra-8c910f21:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-advanced-bone-protection-8f448118:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-advanced-magnesium-complex-a350aaa8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-advanced-pcos-relief-6e394c20:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-advanced-whey-vanilla-911ccaf0:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ahcc-916917ba:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ahiflower-oil-48c27ea4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-alcar-1adf0316:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-all-life-colostrum-99eabdf8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-andrographis-1e286efe:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-aor-zymes-b39d1797:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-arginine-3f3e2864:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-bacopa-enlighten-c15d0994:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-bcaa-4ee93f84:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-benagene-82990504:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-benfotiamine-04e3a2be:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-berberine-403b489b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-biofolate-76fe67fb:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-bone-basics-37579c2b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-c-bioflavinoids-121e326c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-cardio-mag-2-0-c350146e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-cardio-nox-b7243d68:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-carnosine-500-a17fae70:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-chanca-piedra-d7e92c70:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-cholesterol-control-7b53ac41:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-chromium-picolinate-4e1e9aa0:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-citicoline-5900ad93:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-coenzyme-q10-fbe2f6be:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-cogni-q-eb0aca23:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-collagen-lift-4455bc6b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-cortisol-adapt-ef5997a6:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-curcumin-95-d07e0fa8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-curcumin-active-77ba26a9:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-curcumin-ultra-vegan-aba3cb89:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-curcuviva-3946b060:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-d-glucarate-milk-thistle-ca1b08de:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-digestase-2-0-884921ff:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-estro-adapt-d0fad7de:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-fem-adapt-f534d681:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-fem-calm-7299b44d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-gaba-15d37979:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-gandha-600-ccb89ed2:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-gastro-relief-216f99e2:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ginkgo-biloba-a9ff7317:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-glucosamine-and-chondroitin-9bbad5e1:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-glucosupport-81d276c8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-glycine-f020f027:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-green-lipped-ffa-e0706a5e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-gymnema-75-7b296793:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-hawthorn-ii-1725916a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-holy-basil-c55473bd:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-hydroxy-b12-b08ddd07:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-i-10a049c4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-inflammation-relief-0ec2cb33:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-inositol-caps-7948b601:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-inositol-powder-fcad2d2c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-l-carnitine-411811e1:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-l-glutamine-capsules-a25e820c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-l-glutamine-powder-ea91818a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-l-lysine-36f6f49c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-l-tyrosine-78b1b986:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-liver-support-af5fd467:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-lysine-vitamin-c-and-hyaluronic-acid-97035d73:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-maca-3b81fe80:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-mag-k-taurine-05059574:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-mag-malate-renew-4b038de6:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-magnesium-glycinate-88752906:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-magnesium-potassium-aspartates-67f57b2b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-magnesium-synergy-powder-495620cf:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-magnesium-taurine-7b760ba3:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-mastica-chios-ac1551be:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-maxi-boz-ii-d0442bce:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-maxmethyl-c15b0118:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-mcp-powder-76d63f89:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-menopause-relief-21abcdce:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-methyl-b12-15mg-102c7ae8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-methyl-b12-5mg-4574272a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-migraine-manager-de6a3b88:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-msm-827a76ef:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-msm-glucosamine-45f2f3d6:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-multi-basics-3-bb38ce64:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-n-a-c-6effa74a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-nattokinase-0a1404e2:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-niacin-no-flush-f70003d8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-nmn-250-9b2574ef:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-nmn-600-3b12baba:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-nmn-wheat-germ-e00e621b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-olive-leaf-extract-87852cbf:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-adapt-73936380:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-adapt-vegan-563e70b9:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-bone-20efad64:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-bone-vegan-46ea00ca:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-c-d773869f:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-core-6ca381c1:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-eyes-2-vials-934ce6d9:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-glucose-ii-cb669a72:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-heart-5641273e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-iron-86636e19:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-iron-vegan-6f17e092:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-mind-e046d649:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-minerals-d54d0589:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ortho-sleep-9cac862d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-orthosil-bdb8e8e3:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-p-5-p-08605493:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-p-e-a-k-activate-89b33ce7:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-p-e-a-k-pain-relief-cd131933:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-pantethine-daca03ac:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-postbiotic-boost-88b17d41:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-probiotic-3-79d9ada9:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-5-htp-100-ef0c01f9:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-adapt-5313d1f4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-adrenal-glandular-df586c76:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-b-complex-081b656b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-bioflavonoids-3cf17c93:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-bones-dbb1314a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-boswellia-max-06b8f76b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-co-enzyme-q10-542d3851:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-curcumin-f4ed86b7:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-destress-3ec5a286:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-e-complex-6c5f6716:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-estro-support-6af2b353:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-gastro-relief-65775cfb:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-green-tea-53865591:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-magnesium-plus-6b1b591e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-magnesium-synergy-8513de58:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-methylcobalamin-c7e44a77:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-n-a-c-6de64cde:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-ortho-core-9bcbe674:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-pain-relief-84ef0b38:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-palmitoylethanolamide-p-e-a-40386c5e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-quercetin-50cdb2f5:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-sleep-8a7e9ab7:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-theanine-a750e818:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-thyroid-1991cbff:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-tri-b12-66e4b203:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-vision-21e105a4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-vitamin-c-0f847f6a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-professional-pro-vitex-9112ac85:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-prostate-support-c22c5ed3:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ps-100-694c2a40:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-psyllium-curcumin-3b483645:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-quercetin-1e17a69d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-r-lipoic-acid-150-mg-e12d8931:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-r-lipoic-acid-high-dose-d555fa23:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-red-yeast-rice-3e194fb2:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-red-yeast-rice-garlic-b3b2214d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-relax-and-recharge-92def65c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-rhodiola-047be3c4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-ribogen-mg-18c3b64f:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-saccharomyces-boulardii-bf7ab5a4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-saffron-2-0-3fdb3f53:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-same-400-2201c62d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-semet-705004e1:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-solufibre-powder-8a384261:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-strontium-support-ii-c9ee42c4:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-superfocus-422a70fa:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-taurine-e181f635:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-thyro-support-a38f124b:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-total-e-564dcf64:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-tri-b12-synergy-ff7da137:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-triphlax-750-ddaeb93f:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-urica-8db9e9ae:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-urolithin-a-75f11eee:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-uti-cleanse-2796ed86:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-uti-cleanse-powder-886678a8:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-veinease-4280e019:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vinpo-15-2642312c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vision-support-ii-0a3e453a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vitamin-c-952e8d9c:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vitamin-d3-2500iu-bb628f5a:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vitamin-d3-liquid-adult-1bac4718:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vitamin-d3-liquid-child-bf96efac:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-vitamin-k2-9b8648e7:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-wildcrafted-boswellia-1159c82d:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-zen-theanine-d6168c4e:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:aor-zinc-copper-balance-f98b1ac6:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-alchornea-0f37fc05:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-alchornea-0f37fc05:1",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-alchornea-0f37fc05:2",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-alchornea-0f37fc05:3",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-andrographis-9d66c002:0",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-andrographis-9d66c002:1",
+      "missing acquisition result"
+    ],
+    [
+      "ca:apex-botanicals-andrographis-9d66c002:2",
+      "missing acquisition result"
+    ]
+  ]
+}
+FAIL

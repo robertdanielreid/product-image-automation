@@ -1,0 +1,26 @@
+{
+  "version": "33",
+  "purpose": "Minimal-work, low-cost exact product-image acquisition and verification using DeepSeek-Claude Code plus Gemini 2.5 Flash-Lite vision.",
+  "catalogueRows": 20076,
+  "primaryLaunchers": [
+    "ONE_CLICK_SETUP.command",
+    "RUN_ALL.command",
+    "RESUME.command",
+    "CHECK_STATUS.command",
+    "OPEN_REVIEW_QUEUE.command",
+    "START_DEEPSEEK_CLAUDE.command"
+  ],
+  "strictApprovalThreshold": 98,
+  "defaultVisionModel": "gemini-2.5-flash-lite",
+  "networkRunCompleted": false,
+  "tests": [
+    "20,076 path verification",
+    "Python compile",
+    "shell syntax",
+    "existing mock full gate",
+    "Gemini verifier mock",
+    "retry mock",
+    "DOCX render QA"
+  ],
+  "note": "No product image is marked complete until the strict final validator passes."
+}

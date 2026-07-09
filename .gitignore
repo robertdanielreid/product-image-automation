@@ -1,0 +1,7 @@
+.venv/
+webstore_image_output/
+__pycache__/
+*.pyc
+logs/
+.env
+output/

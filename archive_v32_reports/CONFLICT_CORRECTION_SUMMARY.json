@@ -1,0 +1,9 @@
+{
+  "catalogueRows": 20076,
+  "allFlaggedConflictRowsCorrected": 4402,
+  "remainingFlaggedConflictRowsWithSourcePage": 0,
+  "remainingFlaggedConflictRowsWithCurrentImageReference": 0,
+  "duplicateImmutableKeys": 0,
+  "duplicateTargetPaths": 0,
+  "status": "ALL_FLAGGED_SOURCE_CONFLICTS_STRUCTURALLY_CORRECTED"
+}

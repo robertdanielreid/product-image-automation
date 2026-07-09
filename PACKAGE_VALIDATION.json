@@ -1,0 +1,19 @@
+{
+  "package": "DEEPSEEK_CLAUDE_PRODUCT_IMAGE_AUTOMATION_V33",
+  "catalogueRows": 20076,
+  "uniqueImmutableKeys": 20076,
+  "uniqueTargetJpgPaths": 20076,
+  "duplicateKeys": 0,
+  "duplicateTargetPaths": 0,
+  "allTargetPathsJpg": true,
+  "allTargetPathsTraversalSafe": true,
+  "pythonCompile": "PASS",
+  "shellSyntax": "PASS",
+  "existingMockFullGate": "PASS",
+  "geminiVerifierMock": "PASS",
+  "retryPreparationMock": "PASS",
+  "docxRenderPages": 6,
+  "networkAcquisitionExecuted": false,
+  "note": "This package automates acquisition and strict verification. It does not contain 20,076 completed product images.",
+  "pass": true
+}

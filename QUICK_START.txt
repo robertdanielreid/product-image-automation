@@ -1,0 +1,7 @@
+1. Get a Gemini API key: https://aistudio.google.com/app/apikey
+2. Double-click ONE_CLICK_SETUP.command and paste the key.
+3. Double-click RUN_ALL.command.
+
+If interrupted: double-click RESUME.command.
+To see progress: double-click CHECK_STATUS.command.
+To review uncertain images: double-click OPEN_REVIEW_QUEUE.command.

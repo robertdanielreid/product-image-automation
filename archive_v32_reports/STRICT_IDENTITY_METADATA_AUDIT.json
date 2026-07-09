@@ -1,0 +1,16 @@
+{
+  "catalogueRows": 20076,
+  "uniqueImmutableKeys": 20076,
+  "uniqueTargetPaths": 20076,
+  "brands": 810,
+  "exactBrandProductSizeIdentityGroupsRepeatedAcrossRegionsOrListings": 967,
+  "rowsInRepeatedExactIdentityGroups": 2057,
+  "brandProductGroupsWithMultipleSizes": 1466,
+  "sourcePagesReusedAcrossIncompatibleIdentities": 1542,
+  "rowsOnIncompatibleSharedSourcePages": 3706,
+  "blankBrand": 0,
+  "blankProductName": 0,
+  "blankSize": 0,
+  "currentApprovedImagesPresent": 0,
+  "releaseStatus": "FAIL_CLOSED_PENDING_IMAGE_ACQUISITION_AND_EXACT_IDENTITY_REVIEW"
+}

@@ -1,0 +1,26 @@
+{
+  "authoritativeProductRows": 20076,
+  "manifestRows": 20076,
+  "auditRows": 20076,
+  "uniqueImmutableKeys": 20076,
+  "uniqueTargetJpgPaths": 20076,
+  "sourceCatalogueCounts": {
+    "catalogue_ca_with_product_images_v24_final_208_completion.csv": 4535,
+    "catalogue_eu_with_product_images_v24_final_208_completion.csv": 1713,
+    "catalogue_uk_with_product_images_v24_final_208_completion.csv": 5872,
+    "catalogue_us_with_product_images_v24_final_208_completion.csv": 7956
+  },
+  "productToManifestMappingIssues": 0,
+  "sourceKeysMissingFromManifest": 0,
+  "manifestKeysMissingFromSourceCatalogues": 0,
+  "pathSchema": "assets/product-images/catalogue-v28/<24-lowercase-hex-assetId>.jpg",
+  "browserImageSrcSchema": "/assets/product-images/catalogue-v28/<assetId>.jpg",
+  "staticPathAuditPass": true,
+  "executionPathFixes": [
+    "staged JPGs are now written under each uploaded chunk artifact",
+    "chunk result filenames now match acquisition output",
+    "validator resolves stagingPath from artifact/store root",
+    "resume logic checks the artifact/store root",
+    "each chunk emits path_verification.json"
+  ]
+}

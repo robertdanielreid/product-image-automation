@@ -1,0 +1,1 @@
+Read `DEEPSEEK_CLAUDE_MASTER_PROMPT.md`, inspect the current status and logs, then autonomously run, diagnose and repair the pipeline until the strict final validator passes or only clearly documented manual-review cases remain. Do not weaken any exact-match rule.

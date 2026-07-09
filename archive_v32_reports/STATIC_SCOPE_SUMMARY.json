@@ -1,0 +1,32 @@
+{
+  "authoritativeCatalogueRows": 20076,
+  "userStatedRows": 20067,
+  "countDiscrepancy": 9,
+  "regionCounts": {
+    "ca": 4535,
+    "eu": 1713,
+    "uk": 5872,
+    "us": 7956
+  },
+  "uniqueImmutableKeys": 20076,
+  "uniqueImageReferences": 17234,
+  "actualProductImageFilesInSourceBundle": 0,
+  "microlinkResolverRows": 19911,
+  "legacyLocalReferenceRows": 14,
+  "barcodeDatabaseRows": 1071,
+  "sharedSourceConflictRows": 3966,
+  "priorExplicitVisualVerificationClaims": 82,
+  "decisionCounts": {
+    "LIVE_DOWNLOAD_AND_VISUAL_CONFIRMATION_REQUIRED": 15029,
+    "BLOCKED_SHARED_PAGE_OR_VARIANT_CONFLICT": 3962,
+    "BLOCKED_MISSING_LOCAL_IMAGE_FILE": 14,
+    "BLOCKED_REPLACE_BARCODE_DATABASE_SOURCE": 1071
+  },
+  "sourceClassCounts": {
+    "authorized-or-third-party-product-page": 11811,
+    "official-manufacturer-product-page": 7180,
+    "legacy-local-reference": 14,
+    "third-party-barcode-database": 1071
+  },
+  "releaseDecision": "FAIL_CLOSED_PENDING_NETWORK_ACQUISITION_AND_VISUAL_REVIEW"
+}
