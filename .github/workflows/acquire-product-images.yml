@@ -1,0 +1,49 @@
+name: Acquire exact product images
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: Parallel workers per chunk
+        required: false
+        default: '12'
+permissions:
+  contents: read
+jobs:
+  acquire:
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        chunk: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      IMAGE_WORKERS: ${{ inputs.workers || '12' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Calculate chunk
+        id: range
+        shell: bash
+        run: |
+          START=$(( ${{ matrix.chunk }} * 1004 ))
+          COUNT=1004
+          if [ "$START" -ge 20076 ]; then COUNT=0; fi
+          if [ $((START+COUNT)) -gt 20076 ]; then COUNT=$((20076-START)); fi
+          echo "start=$START" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+      - name: Acquire images
+        if: steps.range.outputs.count != '0'
+        run: ./cloud/run_chunk.sh "${{ steps.range.outputs.start }}" "${{ steps.range.outputs.count }}" "$RUNNER_TEMP/product-images-${{ matrix.chunk }}"
+      - name: Upload chunk
+        if: always() && steps.range.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-images-chunk-${{ matrix.chunk }}
+          path: ${{ runner.temp }}/product-images-${{ matrix.chunk }}
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: warn
