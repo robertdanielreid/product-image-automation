@@ -1,0 +1,112 @@
+name: Gemini verify product images
+on:
+  workflow_dispatch:
+    inputs:
+      acquisition_run_id:
+        description: 'Run ID from the acquisition workflow'
+        required: true
+        default: '28997395080'
+      workers:
+        description: 'Gemini workers'
+        required: false
+        default: '3'
+      rps:
+        description: 'Requests per second'
+        required: false
+        default: '2'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_WORKERS: ${{ inputs.workers || '3' }}
+      GEMINI_RPS: ${{ inputs.rps || '2' }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: pip install -r requirements-v33.txt
+      
+      - name: Download acquisition artifacts
+        run: |
+          mkdir -p cloud-output
+          for i in $(seq 0 19); do
+            echo "Downloading chunk $i..."
+            gh run download ${{ inputs.acquisition_run_id }} \
+              --name "product-images-chunk-$i" \
+              --dir "cloud-output/chunk-$i" \
+              --repo ${{ github.repository }} || echo "Chunk $i not found"
+          done
+          find cloud-output -name "*.jpg" | wc -l
+          echo "images from cloud"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Merge acquisition results
+        run: |
+          python3 -c "
+          import csv
+          from pathlib import Path
+          from collections import Counter
+          
+          base = Path('cloud-output')
+          all_rows = []
+          for chunk_dir in sorted(base.glob('chunk-*')):
+              for csv_file in chunk_dir.glob('**/*.csv'):
+                  if 'acquisition_results' in csv_file.name:
+                      rows = list(csv.DictReader(csv_file.open(encoding='utf-8-sig')))
+                      all_rows.extend(rows)
+          
+          fields = list(all_rows[0].keys())
+          Path('output').mkdir(exist_ok=True)
+          with open('output/all_20076_acquisition_results.csv', 'w', newline='', encoding='utf-8-sig') as f:
+              w = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
+              w.writeheader()
+              w.writerows(all_rows)
+          
+          staged = [r for r in all_rows if r.get('status','').startswith('STAGED')]
+          print(f'Merged {len(all_rows)} rows, {len(staged)} staged')
+          
+          # Merge staging files
+          staging = Path('webstore_image_output/staging')
+          staging.mkdir(parents=True, exist_ok=True)
+          copied = 0
+          for chunk_dir in sorted(base.glob('chunk-*')):
+              for jpg in chunk_dir.glob('**/*.jpg'):
+                  dest = staging / jpg.name
+                  if not dest.exists():
+                      dest.write_bytes(jpg.read_bytes())
+                      copied += 1
+          print(f'Copied {copied} staging files to local store')
+          "
+      
+      - name: Run Gemini verification
+        run: |
+          python3 scripts/verify_staged_images_gemini.py \
+            --package-root . \
+            --store-root webstore_image_output \
+            --model gemini-3.1-flash-lite-preview \
+            --workers "$GEMINI_WORKERS" \
+            --rps "$GEMINI_RPS" \
+            --resume
+      
+      - name: Upload verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-verification-results
+          path: |
+            output/manual_visual_review.csv
+            output/gemini_verification_summary.json
+            output/rejected_candidates.csv
+          retention-days: 30
