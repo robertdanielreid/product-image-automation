@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 
 jobs:
   browser-fallback:
@@ -27,86 +26,27 @@ jobs:
           python3 -m playwright install chromium
           python3 -m playwright install-deps chromium
       
-      - name: Download previous results
+      - name: Setup output dirs
         run: |
-          mkdir -p output webstore_image_output/staging
-          
-          # Download acquisition chunks
-          for i in $(seq 0 19); do
-            gh run download 28997395080 --name "product-images-chunk-$i" --dir "cloud-output/chunk-$i" --repo \${{ github.repository }} 2>/dev/null || true
-          done
-          
-          # Download verification results
-          gh run download 29060018906 --name "gemini-verification-results" --dir "output/cloud-verify" --repo \${{ github.repository }} 2>/dev/null || true
-          
-          # Merge all data
-          python3 -c "
-          import csv
-          from pathlib import Path
-          
-          base = Path('cloud-output')
-          Path('output').mkdir(exist_ok=True)
-          
-          # Merge acquisition CSVs
-          all_rows = []
-          for chunk_dir in sorted(base.glob('chunk-*')):
-              for csv_file in chunk_dir.glob('**/*.csv'):
-                  if 'acquisition_results' in csv_file.name:
-                      rows = list(csv.DictReader(csv_file.open(encoding='utf-8-sig')))
-                      all_rows.extend(rows)
-          
-          if all_rows:
-              fields = list(all_rows[0].keys())
-              with open('output/all_20076_acquisition_results.csv', 'w', newline='', encoding='utf-8-sig') as f:
-                  w = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
-                  w.writeheader()
-                  w.writerows(all_rows)
-              print(f'Merged {len(all_rows)} acquisition rows')
-              
-              # Copy staging JPGs
-              staging = Path('webstore_image_output/staging')
-              staging.mkdir(parents=True, exist_ok=True)
-              c = 0
-              for chunk_dir in sorted(base.glob('chunk-*')):
-                  for jpg in chunk_dir.glob('**/*.jpg'):
-                      dest = staging / jpg.name
-                      if not dest.exists():
-                          dest.write_bytes(jpg.read_bytes())
-                          c += 1
-              print(f'Copied {c} staging files')
-          
-          # Copy verification results
-          cv = Path('output/cloud-verify')
-          if (cv / 'manual_visual_review.csv').exists():
-              import shutil
-              shutil.copy(cv / 'manual_visual_review.csv', 'output/manual_visual_review.csv')
-              if (cv / 'rejected_candidates.csv').exists():
-                  shutil.copy(cv / 'rejected_candidates.csv', 'output/rejected_candidates.csv')
-              print('Copied verification results')
-          "
-        env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          mkdir -p output
+          cp data/all_20076_acquisition_results.csv output/ 2>/dev/null || true
+          cp data/manual_visual_review.csv output/ 2>/dev/null || true
+          cp data/rejected_candidates.csv output/ 2>/dev/null || true
       
-      - name: Calculate chunk range
-        id: range
-        shell: bash
+      - name: Run browser fallback (chunk ${{ matrix.chunk }})
         run: |
           CHUNK_SIZE=805
           START=\$(( ${{ matrix.chunk }} * CHUNK_SIZE ))
-          echo "start=\$START" >> "\$GITHUB_OUTPUT"
-          echo "Processing unresolved rows starting at index \$START, limit \$CHUNK_SIZE"
-      
-      - name: Run browser fallback (chunk)
-        run: |
+          echo "Chunk ${{ matrix.chunk }}: start=$START, limit=$CHUNK_SIZE"
           python3 scripts/browser_resolve_unresolved.py \
             --package-root . \
-            --max-rows 805 \
-            --start-index \${{ steps.range.outputs.start }}
+            --max-rows $CHUNK_SIZE \
+            --start-index $START
       
-      - name: Upload browser overrides
+      - name: Upload overrides
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-overrides-chunk-\${{ matrix.chunk }}
+          name: browser-overrides-chunk-${{ matrix.chunk }}
           path: output/manual_overrides.csv
           retention-days: 30

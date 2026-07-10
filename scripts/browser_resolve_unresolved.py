@@ -58,7 +58,7 @@ def rendered_candidates(page,url,acq):
  return out
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--package-root',type=Path,default=Path(__file__).resolve().parents[1]);ap.add_argument('--max-rows',type=int,default=0);ap.add_argument('--headful',action='store_true');a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--package-root',type=Path,default=Path(__file__).resolve().parents[1]);ap.add_argument('--max-rows',type=int,default=0);ap.add_argument('--start-index',type=int,default=0);ap.add_argument('--headful',action='store_true');a=ap.parse_args()
  root=a.package_root.resolve();out=root/'output';acq=load_acquire(root)
  audit=read(root/'data/all_20076_strict_image_audit.csv');results={r['immutableKey']:r for r in read(out/'all_20076_acquisition_results.csv')}
  domain_map=acq.load_official_domains(root/'data/brand_official_domain_map.csv')
@@ -66,6 +66,7 @@ def main():
  for r in audit:
   res=results.get(r['immutableKey'],{})
   if not res.get('status','').startswith('STAGED'):target.append(r)
+ if a.start_index>0:target=target[a.start_index:]
  if a.max_rows>0:target=target[:a.max_rows]
  overrides_path=out/'manual_overrides.csv';old=read(overrides_path);bykey={r.get('immutableKey',''):r for r in old if r.get('immutableKey')}
  found=0;failed=0
