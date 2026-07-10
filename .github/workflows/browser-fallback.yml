@@ -33,15 +33,17 @@ jobs:
           cp data/manual_visual_review.csv output/ 2>/dev/null || true
           cp data/rejected_candidates.csv output/ 2>/dev/null || true
       
-      - name: Run browser fallback (chunk ${{ matrix.chunk }})
+      - name: Run browser fallback
+        env:
+          CHUNK: ${{ matrix.chunk }}
         run: |
           CHUNK_SIZE=805
-          START=\$(( ${{ matrix.chunk }} * CHUNK_SIZE ))
-          echo "Chunk ${{ matrix.chunk }}: start=$START, limit=$CHUNK_SIZE"
+          START=$(( CHUNK * CHUNK_SIZE ))
+          echo "Chunk ${CHUNK}: start=${START}, limit=${CHUNK_SIZE}"
           python3 scripts/browser_resolve_unresolved.py \
             --package-root . \
-            --max-rows $CHUNK_SIZE \
-            --start-index $START
+            --max-rows ${CHUNK_SIZE} \
+            --start-index ${START}
       
       - name: Upload overrides
         if: always()
