@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse,csv,importlib.util,json,re,time,urllib.parse
+import argparse,csv,importlib.util,json,re,sys,time,urllib.parse
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
@@ -12,7 +12,12 @@ def write(path,rows,fields):
  with path.open('w',encoding='utf-8-sig',newline='') as f:
   w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
 def load_acquire(root):
- p=root/'scripts/acquire_all_20076_real_images.py';spec=importlib.util.spec_from_file_location('acq',p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
+ p=root/'scripts/acquire_all_20076_real_images.py'
+ spec=importlib.util.spec_from_file_location('acquire_all_20076_real_images',str(p))
+ m=importlib.util.module_from_spec(spec)
+ sys.modules['acquire_all_20076_real_images']=m
+ spec.loader.exec_module(m)
+ return m
 
 def search_links(page,query,preferred):
  url='https://www.bing.com/search?'+urllib.parse.urlencode({'q':query,'count':'8'})

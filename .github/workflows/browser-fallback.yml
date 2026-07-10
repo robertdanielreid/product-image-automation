@@ -1,0 +1,101 @@
+name: Browser fallback for unresolved products
+on:
+  workflow_dispatch:
+    inputs:
+      max_rows:
+        description: 'Max rows for browser fallback (0=all unresolved)'
+        required: false
+        default: '0'
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  browser-fallback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-v33.txt
+          python3 -m playwright install chromium
+          python3 -m playwright install-deps chromium
+      
+      - name: Download previous results
+        run: |
+          mkdir -p output webstore_image_output/staging
+          
+          # Download acquisition results from previous run (ID embedded in audit or use latest)
+          echo "Downloading acquisition artifacts..."
+          for i in $(seq 0 19); do
+            gh run download 28997395080 --name "product-images-chunk-$i" --dir "cloud-output/chunk-$i" --repo \${{ github.repository }} 2>/dev/null || true
+          done
+          
+          # Download verification results
+          gh run download 29060018906 --name "gemini-verification-results" --dir "output/cloud-verify" --repo \${{ github.repository }} 2>/dev/null || true
+          
+          # Merge acquisition results
+          python3 -c "
+          import csv
+          from pathlib import Path
+          from collections import Counter
+          
+          base = Path('cloud-output')
+          all_rows = []
+          for chunk_dir in sorted(base.glob('chunk-*')):
+              for csv_file in chunk_dir.glob('**/*.csv'):
+                  if 'acquisition_results' in csv_file.name:
+                      rows = list(csv.DictReader(csv_file.open(encoding='utf-8-sig')))
+                      all_rows.extend(rows)
+          
+          if all_rows:
+              fields = list(all_rows[0].keys())
+              Path('output').mkdir(exist_ok=True)
+              with open('output/all_20076_acquisition_results.csv', 'w', newline='', encoding='utf-8-sig') as f:
+                  w = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
+                  w.writeheader()
+                  w.writerows(all_rows)
+              print(f'Merged {len(all_rows)} acquisition rows')
+              
+              # Copy staging files
+              staging = Path('webstore_image_output/staging')
+              staging.mkdir(parents=True, exist_ok=True)
+              c = 0
+              for chunk_dir in sorted(base.glob('chunk-*')):
+                  for jpg in chunk_dir.glob('**/*.jpg'):
+                      dest = staging / jpg.name
+                      if not dest.exists():
+                          dest.write_bytes(jpg.read_bytes())
+                          c += 1
+              print(f'Copied {c} staging files')
+          else:
+              print('No acquisition chunks found - continuing with empty staging')
+          "
+          
+          # Copy verification results
+          if [ -f output/cloud-verify/manual_visual_review.csv ]; then
+            cp output/cloud-verify/manual_visual_review.csv output/manual_visual_review.csv
+            cp output/cloud-verify/rejected_candidates.csv output/rejected_candidates.csv 2>/dev/null || true
+            echo "Copied verification results"
+          fi
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Run browser fallback
+        run: |
+          python3 scripts/browser_resolve_unresolved.py \
+            --package-root . \
+            --max-rows \${{ inputs.max_rows }}
+      
+      - name: Upload browser overrides
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-fallback-overrides
+          path: output/manual_overrides.csv
+          retention-days: 30
