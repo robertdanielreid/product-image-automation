@@ -367,8 +367,9 @@ def bing_search_pages(query: str, preferred_domains: Iterable[str],
 
 
 # Keep legacy name for compatibility with any external callers.
-def ddg_search_pages(query: str, preferred_domains: Iterable[str]) -> list[str]:
-    return bing_search_pages(query, preferred_domains)
+def ddg_search_pages(query: str, preferred_domains: Iterable[str],
+                     brand: str = "", product_name: str = "") -> list[str]:
+    return bing_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
 
 
 def page_match(row: dict, candidate: Candidate, official_domains: set[str]) -> tuple[float, float, bool, bool]:
