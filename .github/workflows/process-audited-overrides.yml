@@ -1,0 +1,80 @@
+name: Process audited image overrides
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  acquire-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-v33.txt
+          python3 -m playwright install chromium 2>/dev/null || true
+      
+      - name: Setup data
+        run: |
+          mkdir -p output webstore_image_output/staging
+          cp data/all_20076_acquisition_results.csv output/ 2>/dev/null || true
+          cp data/manual_visual_review.csv output/ 2>/dev/null || true
+          cp data/rejected_candidates.csv output/ 2>/dev/null || true
+          cp output/manual_overrides.csv data/ 2>/dev/null || true
+      
+      - name: Download existing staging images
+        run: |
+          for i in $(seq 0 19); do
+            gh run download 28997395080 --name "product-images-chunk-$i" --dir "cloud-output/chunk-$i" --repo ${{ github.repository }} 2>/dev/null || true
+          done
+          python3 -c "
+          from pathlib import Path
+          staging = Path('webstore_image_output/staging')
+          c = 0
+          for chunk_dir in sorted(Path('cloud-output').glob('chunk-*')):
+              for jpg in chunk_dir.glob('**/*.jpg'):
+                  dest = staging / jpg.name
+                  if not dest.exists():
+                      dest.write_bytes(jpg.read_bytes())
+                      c += 1
+          print(f'Restored {c} staging files')
+          "
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Acquire override images
+        run: |
+          # Only process the override products (start from existing, add overrides)
+          python3 scripts/acquire_all_20076_real_images.py \
+            --package-root . \
+            --store-root webstore_image_output \
+            --workers 8 --search-fallback --resume
+      
+      - name: Run Gemini verification
+        run: |
+          python3 scripts/verify_staged_images_gemini.py \
+            --package-root . \
+            --store-root webstore_image_output \
+            --model gemini-3.1-flash-lite-preview \
+            --workers 3 --rps 2 --resume
+      
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audited-override-results
+          path: |
+            output/manual_visual_review.csv
+            output/gemini_verification_summary.json
+            output/all_20076_acquisition_results.csv
+            output/rejected_candidates.csv
+          retention-days: 30
