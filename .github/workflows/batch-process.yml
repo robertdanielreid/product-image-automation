@@ -1,0 +1,197 @@
+name: Batch process (acquire + verify)
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: 'Starting product index'
+        required: true
+        default: '0'
+      limit:
+        description: 'Number of products in this batch'
+        required: true
+        default: '1000'
+      verify_max:
+        description: 'Max products to verify after acquisition'
+        required: false
+        default: '0'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements-v33.txt
+
+      - name: Setup data
+        run: |
+          mkdir -p output webstore_image_output/staging
+          # Copy seed data if available
+          cp data/all_20076_acquisition_results.csv output/ 2>/dev/null || true
+          cp data/manual_visual_review.csv output/ 2>/dev/null || true
+          cp data/rejected_candidates.csv output/ 2>/dev/null || true
+
+      - name: Download existing staging images
+        run: |
+          for i in $(seq 0 19); do
+            gh run download 28997395080 \
+              --name "product-images-chunk-$i" \
+              --dir "cloud-output/chunk-$i" \
+              --repo ${{ github.repository }} 2>/dev/null || true
+          done
+          python3 -c "
+          from pathlib import Path
+          staging = Path('webstore_image_output/staging')
+          c = 0
+          for chunk_dir in sorted(Path('cloud-output').glob('chunk-*')):
+              for jpg in chunk_dir.glob('**/*.jpg'):
+                  dest = staging / jpg.name
+                  if not dest.exists():
+                      dest.write_bytes(jpg.read_bytes())
+                      c += 1
+          print(f'Restored {c} staging files')
+          "
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download previous batch results
+        run: |
+          # Pull in prior batch CSVs so --resume sees all accumulated state
+          runs=$(gh run list --workflow "batch-process.yml" --status success --limit 50 --json databaseId -q '.[].databaseId' 2>/dev/null || true)
+          for run_id in $runs; do
+            echo "Downloading results from run $run_id..."
+            gh run download "$run_id" --name "batch-results" --dir "prior-runs/$run_id" --repo ${{ github.repository }} 2>/dev/null || true
+          done
+          # Merge prior results into current output
+          python3 -c "
+          import csv, json
+          from pathlib import Path
+
+          output = Path('output')
+          output.mkdir(exist_ok=True)
+
+          merged = {}
+          # Load existing local results
+          acq_csv = output / 'all_20076_acquisition_results.csv'
+          if acq_csv.exists():
+              for r in csv.DictReader(acq_csv.open(encoding='utf-8-sig')):
+                  merged[r['batchIndex']] = r
+
+          review_csv = output / 'manual_visual_review.csv'
+          existing_reviews = {}
+          if review_csv.exists():
+              for r in csv.DictReader(review_csv.open(encoding='utf-8-sig')):
+                  existing_reviews[r['batchIndex']] = r
+
+          # Merge from prior runs
+          for prior_dir in sorted(Path('prior-runs').glob('*')):
+              for csv_file in prior_dir.glob('**/*.csv'):
+                  if 'acquisition_results' in csv_file.name and 'all_20076' in csv_file.name:
+                      try:
+                          for r in csv.DictReader(csv_file.open(encoding='utf-8-sig')):
+                              if r.get('batchIndex') and r['batchIndex'] not in merged:
+                                  merged[r['batchIndex']] = r
+                      except: pass
+                  elif 'manual_visual_review' in csv_file.name:
+                      try:
+                          for r in csv.DictReader(csv_file.open(encoding='utf-8-sig')):
+                              bi = r.get('batchIndex','')
+                              if bi and bi not in existing_reviews:
+                                  existing_reviews[bi] = r
+                      except: pass
+
+          # Write merged acquisition results
+          if merged:
+              fields = list(next(iter(merged.values())).keys())
+              with open(acq_csv, 'w', newline='', encoding='utf-8-sig') as f:
+                  w = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
+                  w.writeheader()
+                  w.writerows(merged.values())
+              staged = sum(1 for v in merged.values() if v.get('status','').startswith('STAGED'))
+              unresolved = len(merged) - staged
+              print(f'Merged {len(merged)} rows ({staged} staged, {unresolved} unresolved)')
+
+          # Write merged reviews
+          if existing_reviews:
+              rfields = list(next(iter(existing_reviews.values())).keys())
+              with open(review_csv, 'w', newline='', encoding='utf-8-sig') as f:
+                  w = csv.DictWriter(f, fieldnames=rfields, extrasaction='ignore')
+                  w.writeheader()
+                  w.writerows(existing_reviews.values())
+          "
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Acquire images (batch ${{ inputs.start }}-${{ inputs.start }}+${{ inputs.limit }})
+        run: |
+          python3 scripts/acquire_all_20076_real_images.py \
+            --package-root . \
+            --store-root webstore_image_output \
+            --start ${{ inputs.start }} \
+            --limit ${{ inputs.limit }} \
+            --workers 8 \
+            --search-fallback \
+            --resume
+
+      - name: Run Gemini verification
+        run: |
+          python3 scripts/verify_staged_images_gemini.py \
+            --package-root . \
+            --store-root webstore_image_output \
+            --model gemini-3.1-flash-lite-preview \
+            --workers 3 --rps 2 \
+            ${{ inputs.verify_max != '0' && format('--max-requests {0}', inputs.verify_max) || '' }} \
+            --resume
+
+      - name: Print batch summary
+        if: always()
+        run: |
+          python3 -c "
+          import csv, json
+          from pathlib import Path
+
+          acq = Path('output/all_20076_acquisition_results.csv')
+          review = Path('output/manual_visual_review.csv')
+          gemini = Path('output/gemini_verification_summary.json')
+
+          if acq.exists():
+              rows = list(csv.DictReader(acq.open(encoding='utf-8-sig')))
+              staged = sum(1 for r in rows if r.get('status','').startswith('STAGED'))
+              unresolved = len(rows) - staged
+              print(f'Acquisition: {len(rows)} total, {staged} staged, {unresolved} unresolved')
+
+          if review.exists():
+              rrows = list(csv.DictReader(review.open(encoding='utf-8-sig')))
+              approved = sum(1 for r in rrows if r.get('manualVisualDecision','') == 'APPROVED')
+              rejected = sum(1 for r in rrows if r.get('manualVisualDecision','') == 'REJECTED')
+              pending = sum(1 for r in rrows if r.get('manualVisualDecision','') not in ('APPROVED','REJECTED','REVIEW'))
+              print(f'Verification: {len(rrows)} reviewed, {approved} approved, {rejected} rejected, {pending} pending')
+
+          if gemini.exists():
+              gs = json.loads(gemini.read_text())
+              print(json.dumps(gs, indent=2))
+          "
+
+      - name: Upload batch results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-results
+          path: |
+            output/all_20076_acquisition_results.csv
+            output/manual_visual_review.csv
+            output/gemini_verification_summary.json
+            output/rejected_candidates.csv
+          retention-days: 14
