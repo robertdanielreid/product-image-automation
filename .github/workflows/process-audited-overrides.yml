@@ -8,20 +8,17 @@ permissions:
 jobs:
   acquire-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 90
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       
       - name: Install dependencies
-        run: |
-          pip install -r requirements-v33.txt
-          python3 -m playwright install chromium 2>/dev/null || true
+        run: pip install -r requirements-v33.txt
       
       - name: Setup data
         run: |
@@ -29,7 +26,6 @@ jobs:
           cp data/all_20076_acquisition_results.csv output/ 2>/dev/null || true
           cp data/manual_visual_review.csv output/ 2>/dev/null || true
           cp data/rejected_candidates.csv output/ 2>/dev/null || true
-          cp output/manual_overrides.csv data/ 2>/dev/null || true
       
       - name: Download existing staging images
         run: |
@@ -51,13 +47,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Acquire override images
+      - name: Acquire override images only
         run: |
-          # Only process the override products (start from existing, add overrides)
-          python3 scripts/acquire_all_20076_real_images.py \
+          python3 scripts/acquire_overrides_only.py \
             --package-root . \
             --store-root webstore_image_output \
-            --workers 8 --search-fallback --resume
+            --workers 8
       
       - name: Run Gemini verification
         run: |
