@@ -64,7 +64,7 @@ jobs:
                 --dir "seed-chunks/chunk-$i" \
                 --repo ${{ github.repository }} 2>/dev/null || true
             done
-            python3 -c "
+            python3 << 'PYEOF'
             from pathlib import Path
             staging = Path('webstore_image_output/staging')
             staging.mkdir(parents=True, exist_ok=True)
@@ -76,7 +76,7 @@ jobs:
                         dest.write_bytes(jpg.read_bytes())
                         c += 1
             print(f'Restored {c} seed staging files')
-            "
+            PYEOF
             rm -rf seed-chunks
           fi
           echo "Staging file count: $(find webstore_image_output/staging -name '*.jpg' 2>/dev/null | wc -l)"
