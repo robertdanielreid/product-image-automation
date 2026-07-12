@@ -43,26 +43,22 @@ jobs:
           cp data/manual_visual_review.csv output/ 2>/dev/null || true
           cp data/rejected_candidates.csv output/ 2>/dev/null || true
 
-      - name: Download existing staging images
+      - name: Download staging images from latest completed run
         run: |
-          for i in $(seq 0 19); do
-            gh run download 28997395080 \
-              --name "product-images-chunk-$i" \
-              --dir "cloud-output/chunk-$i" \
-              --repo ${{ github.repository }} 2>/dev/null || true
-          done
-          python3 -c "
-          from pathlib import Path
-          staging = Path('webstore_image_output/staging')
-          c = 0
-          for chunk_dir in sorted(Path('cloud-output').glob('chunk-*')):
-              for jpg in chunk_dir.glob('**/*.jpg'):
-                  dest = staging / jpg.name
-                  if not dest.exists():
-                      dest.write_bytes(jpg.read_bytes())
-                      c += 1
-          print(f'Restored {c} staging files')
-          "
+          # Find the latest completed batch-process run that has a staging-images artifact
+          latest_run=$(gh run list --workflow "batch-process.yml" --status success --limit 20 --json databaseId -q '.[].databaseId' 2>/dev/null | head -1)
+          if [ -n "$latest_run" ]; then
+            echo "Downloading staging images from run $latest_run..."
+            gh run download "$latest_run" --name "staging-images" --dir . --repo ${{ github.repository }} 2>/dev/null || echo "No staging-images artifact in run $latest_run (may be first run)"
+          else
+            echo "No previous batch-process runs found — starting from seed data"
+          fi
+          # If staging was downloaded as a tar, extract it
+          if [ -f staging.tar.gz ]; then
+            tar -xzf staging.tar.gz -C webstore_image_output/
+            rm staging.tar.gz
+          fi
+          echo "Staging file count: $(find webstore_image_output/staging -name '*.jpg' 2>/dev/null | wc -l)"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -183,6 +179,21 @@ jobs:
               gs = json.loads(gemini.read_text())
               print(json.dumps(gs, indent=2))
           "
+
+      - name: Upload staging images
+        if: always()
+        run: |
+          # Tar the staging directory for efficient upload
+          tar -czf staging.tar.gz -C webstore_image_output staging/ 2>/dev/null || echo "No staging images to upload"
+          echo "Staging archive size: $(du -h staging.tar.gz 2>/dev/null || echo '0')"
+
+      - name: Upload staging images artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-images
+          path: staging.tar.gz
+          retention-days: 14
 
       - name: Upload batch results
         if: always()

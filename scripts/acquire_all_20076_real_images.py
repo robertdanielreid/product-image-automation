@@ -470,11 +470,8 @@ def google_search_pages(query: str, preferred_domains: Iterable[str],
 
 def multi_search_pages(query: str, preferred_domains: Iterable[str],
                        brand: str = "", product_name: str = "") -> list[str]:
-    """Try Google first, fall back to Bing if Google is blocked or returns nothing."""
-    results = google_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
-    if not results:
-        results = bing_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
-    return results
+    """Search Bing (Google disabled due to aggressive rate-limiting)."""
+    return bing_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
 
 
 def page_match(row: dict, candidate: Candidate, official_domains: set[str]) -> tuple[float, float, bool, bool]:
