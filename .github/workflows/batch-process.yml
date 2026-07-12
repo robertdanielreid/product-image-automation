@@ -64,19 +64,20 @@ jobs:
                 --dir "seed-chunks/chunk-$i" \
                 --repo ${{ github.repository }} 2>/dev/null || true
             done
-            python3 -c '
-from pathlib import Path
-staging = Path("webstore_image_output/staging")
-staging.mkdir(parents=True, exist_ok=True)
-c = 0
-for chunk_dir in sorted(Path("seed-chunks").glob("chunk-*")):
-    for jpg in chunk_dir.glob("**/*.jpg"):
-        dest = staging / jpg.name
-        if not dest.exists():
-            dest.write_bytes(jpg.read_bytes())
-            c += 1
-print(f"Restored {c} seed staging files")
-'
+            cat > /tmp/merge_seed.py << 'ENDPY'
+            from pathlib import Path
+            staging = Path("webstore_image_output/staging")
+            staging.mkdir(parents=True, exist_ok=True)
+            c = 0
+            for chunk_dir in sorted(Path("seed-chunks").glob("chunk-*")):
+                for jpg in chunk_dir.glob("**/*.jpg"):
+                    dest = staging / jpg.name
+                    if not dest.exists():
+                        dest.write_bytes(jpg.read_bytes())
+                        c += 1
+            print(f"Restored {c} seed staging files")
+            ENDPY
+            python3 /tmp/merge_seed.py
             rm -rf seed-chunks
           fi
           echo "Staging file count: $(find webstore_image_output/staging -name '*.jpg' 2>/dev/null | wc -l)"
