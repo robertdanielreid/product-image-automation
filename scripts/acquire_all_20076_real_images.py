@@ -372,6 +372,111 @@ def ddg_search_pages(query: str, preferred_domains: Iterable[str],
     return bing_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
 
 
+GOOGLE_EVASION_HEADERS = [
+    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+     "Accept-Language": "en-US,en;q=0.9"},
+    {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+     "Accept-Language": "en-CA,en;q=0.9"},
+    {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+     "Accept-Language": "en-GB,en;q=0.8"},
+]
+_google_req_count = 0
+_google_blocked = False
+
+
+def google_search_pages(query: str, preferred_domains: Iterable[str],
+                        brand: str = "", product_name: str = "") -> list[str]:
+    """Search Google for product pages. Falls back to Bing automatically if blocked."""
+    global _google_req_count, _google_blocked
+    if _google_blocked:
+        return []
+
+    pref = [d.lower() for d in preferred_domains if d]
+    brand_tokens = set(significant_tokens(brand)) if brand else set()
+    product_tokens = set(significant_tokens(product_name)) if product_name else set()
+    relevance_tokens = brand_tokens | product_tokens
+
+    url = "https://www.google.com/search?" + urllib.parse.urlencode({"q": query, "num": "10", "hl": "en", "gl": "ca"})
+    headers = GOOGLE_EVASION_HEADERS[_google_req_count % len(GOOGLE_EVASION_HEADERS)]
+    headers["Referer"] = "https://www.google.com/"
+
+    # Be gentler than Bing — Google blocks aggressively
+    time.sleep(1.5 + (_google_req_count % 3) * 0.5)
+
+    try:
+        s = requests.Session()
+        s.headers.update(headers)
+        resp = s.get(url, timeout=TIMEOUT, allow_redirects=True)
+        _google_req_count += 1
+    except Exception:
+        return []  # network error, just fall back
+
+    if resp.status_code != 200:
+        if resp.status_code in (429, 403, 503):
+            print(f"  google blocked (HTTP {resp.status_code}) after {_google_req_count} requests; falling back to Bing", flush=True)
+            _google_blocked = True
+        return []
+
+    html_text = resp.text.lower()
+    if "captcha" in html_text or "sorry" in html_text or "our systems have detected unusual traffic" in html_text:
+        print(f"  google captcha after {_google_req_count} requests; falling back to Bing", flush=True)
+        _google_blocked = True
+        return []
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    links: list[str] = []
+
+    # Google result blocks come in several flavors. Try the most common selectors.
+    result_selectors = [
+        "div.g a[href^='http']",           # classic result blocks
+        "a[jsname][href^='http']",          # newer result links
+        "div[data-sokoban-container] a[href^='http']",  # modern container
+        "h3 + div a[href^='http']",         # adjacent-to-heading pattern
+        "a[href^='http']",                  # fallback: any external link
+    ]
+
+    seen: set[str] = set()
+    for selector in result_selectors:
+        for a in soup.select(selector):
+            href = a.get("href", "")
+            if not href or not href.startswith("http"):
+                continue
+            # Skip Google's own domains
+            if "google.com" in href or "google.ca" in href or "youtube.com" in href:
+                continue
+            href = clean_url(href, resp.url)
+            dom = canonical_domain(href)
+            if not href or dom in BAD_PAGE_DOMAINS:
+                continue
+            if href in seen:
+                continue
+            seen.add(href)
+
+            # Relevance filter (same logic as Bing)
+            result_text = (a.get_text(" ", strip=True) + " " + href).lower()
+            if relevance_tokens:
+                text_tokens = set(TOKEN_RE.findall(result_text))
+                if not (text_tokens & relevance_tokens) and not any(
+                    dom == d or dom.endswith("." + d) for d in pref
+                ):
+                    continue
+            links.append(href)
+        if len(links) >= 5:
+            break  # got enough results
+
+    links = list(dict.fromkeys(links))
+    return sorted(links, key=lambda u: (0 if any(canonical_domain(u).endswith(d) for d in pref) else 1, links.index(u)))[:8]
+
+
+def multi_search_pages(query: str, preferred_domains: Iterable[str],
+                       brand: str = "", product_name: str = "") -> list[str]:
+    """Try Google first, fall back to Bing if Google is blocked or returns nothing."""
+    results = google_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
+    if not results:
+        results = bing_search_pages(query, preferred_domains, brand=brand, product_name=product_name)
+    return results
+
+
 def page_match(row: dict, candidate: Candidate, official_domains: set[str]) -> tuple[float, float, bool, bool]:
     # Fail closed: broad page body is discovery context only. It may list related
     # products and every size option, so it cannot prove the selected image identity.
@@ -527,9 +632,9 @@ def discover_candidates(row: dict, official_domains: set[str], search_fallback: 
             if row.get("sku"): query_parts.append(f'"{row["sku"]}"')
             query = " ".join(query_parts) + " buy product"
         if barcode: query += f" {barcode}"
-        for page in ddg_search_pages(query, official_domains,
-                                      brand=row["brand"],
-                                      product_name=row["productName"]):
+        for page in multi_search_pages(query, official_domains,
+                                       brand=row["brand"],
+                                       product_name=row["productName"]):
             try:
                 cs, _, _ = collect_page_candidates(page)
                 candidates.extend(cs)
