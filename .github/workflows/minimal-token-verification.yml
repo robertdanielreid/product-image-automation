@@ -29,7 +29,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: minimal-token-verification-\${{ inputs.acquisition_artifact_id }}
+  group: minimal-token-verification-${{ inputs.acquisition_artifact_id }}
   cancel-in-progress: false
 
 jobs:
@@ -52,16 +52,16 @@ jobs:
 
       - name: Restore acquisition and prior checkpoint
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           mkdir -p output webstore_image_output/staging /tmp/checkpoint
-          gh api --method GET "/repos/\${{ github.repository }}/actions/artifacts/\${{ inputs.acquisition_artifact_id }}/zip" > /tmp/acquisition.zip
+          gh api --method GET "/repos/${{ github.repository }}/actions/artifacts/${{ inputs.acquisition_artifact_id }}/zip" > /tmp/acquisition.zip
           unzip -oq /tmp/acquisition.zip -d output
           rm -rf /tmp/checkpoint/*
-          if gh run download "\${{ inputs.checkpoint_run_id }}" --name local-token-checkpoint --dir /tmp/checkpoint --repo "\${{ github.repository }}"; then
+          if gh run download "${{ inputs.checkpoint_run_id }}" --name local-token-checkpoint --dir /tmp/checkpoint --repo "${{ github.repository }}"; then
             echo "Restored local-token checkpoint"
-          elif gh run download "\${{ inputs.checkpoint_run_id }}" --name gemini-checkpoint --dir /tmp/checkpoint --repo "\${{ github.repository }}"; then
+          elif gh run download "${{ inputs.checkpoint_run_id }}" --name gemini-checkpoint --dir /tmp/checkpoint --repo "${{ github.repository }}"; then
             echo "Restored Gemini checkpoint as the starting state"
           else
             echo "No prior checkpoint artifact found"
@@ -79,12 +79,12 @@ jobs:
 
       - name: Restore prepared staging images
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           rm -rf /tmp/prepared-staging
           mkdir -p /tmp/prepared-staging webstore_image_output/staging
-          gh run download "\${{ inputs.prepared_staging_run_id }}" --name prepared-staging-images --dir /tmp/prepared-staging --repo "\${{ github.repository }}"
+          gh run download "${{ inputs.prepared_staging_run_id }}" --name prepared-staging-images --dir /tmp/prepared-staging --repo "${{ github.repository }}"
           count="$(find /tmp/prepared-staging -type f -name '*.jpg' | wc -l | tr -d ' ')"
           test "$count" -gt 0
           find /tmp/prepared-staging -type f -name '*.jpg' -exec cp -n {} webstore_image_output/staging/ \;
@@ -92,7 +92,7 @@ jobs:
 
       - name: Run minimal-input local verification checkpoint
         env:
-          BATCH_SIZE: \${{ inputs.batch_size }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -302,17 +302,17 @@ jobs:
       - name: Queue next local checkpoint
         if: success()
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           remaining="$(python3 -c 'import json; print(json.load(open("output/local_verification_summary.json"))["remainingCandidates"])')"
           if [ "$remaining" -gt 0 ]; then
-            gh api --method POST "/repos/\${{ github.repository }}/actions/workflows/minimal-token-verification.yml/dispatches" \
+            gh api --method POST "/repos/${{ github.repository }}/actions/workflows/minimal-token-verification.yml/dispatches" \
               -f ref=main \
-              -f "inputs[acquisition_artifact_id]=\${{ inputs.acquisition_artifact_id }}" \
-              -f "inputs[checkpoint_run_id]=\${{ github.run_id }}" \
-              -f "inputs[prepared_staging_run_id]=\${{ inputs.prepared_staging_run_id }}" \
-              -f "inputs[batch_size]=\${{ inputs.batch_size }}"
+              -f "inputs[acquisition_artifact_id]=${{ inputs.acquisition_artifact_id }}" \
+              -f "inputs[checkpoint_run_id]=${{ github.run_id }}" \
+              -f "inputs[prepared_staging_run_id]=${{ inputs.prepared_staging_run_id }}" \
+              -f "inputs[batch_size]=${{ inputs.batch_size }}"
             echo "Queued next local checkpoint with $remaining rows remaining"
           else
             echo "Local verification complete"
