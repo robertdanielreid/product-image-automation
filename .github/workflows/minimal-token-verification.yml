@@ -93,12 +93,15 @@ jobs:
       - name: Run minimal-input local verification checkpoint
         env:
           BATCH_SIZE: ${{ inputs.batch_size }}
+          VERIFICATION_BUDGET_MINUTES: "300"
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import csv
           import json
+          import os
           import re
+          import time
           import unicodedata
           from collections import Counter, defaultdict
           from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -113,6 +116,8 @@ jobs:
           review_path = Path("output/manual_visual_review.csv")
           staging_root = Path("webstore_image_output")
           generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          budget_minutes = max(1, int(os.environ.get("VERIFICATION_BUDGET_MINUTES", "300")))
+          deadline = time.monotonic() + (budget_minutes * 60)
 
           with acquisition_path.open(encoding="utf-8-sig", newline="") as f:
               acquisition = list(csv.DictReader(f))
@@ -237,15 +242,41 @@ jobs:
 
           processed_rows = 0
           decisions = Counter()
-          with ThreadPoolExecutor(max_workers=4) as pool:
-              futures = {pool.submit(process_group, group): group for group in batch_groups}
-              for future in as_completed(futures):
-                  group = futures[future]
-                  result = future.result()
-                  for row, _source in group:
-                      row.update(result)
-                      decisions[result["localVerificationDecision"]] += 1
-                      processed_rows += 1
+          processed_groups = 0
+          budget_reached = False
+          for offset in range(0, len(batch_groups), 4):
+              if time.monotonic() >= deadline:
+                  budget_reached = True
+                  break
+              chunk = batch_groups[offset : offset + 4]
+              with ThreadPoolExecutor(max_workers=4) as pool:
+                  futures = {pool.submit(process_group, group): group for group in chunk}
+                  for future in as_completed(futures):
+                      group = futures[future]
+                      try:
+                          result = future.result()
+                      except Exception as exc:
+                          result = {
+                              "localVerificationDecision": "LOCAL_REVIEW",
+                              "localBrandScore": "0.000",
+                              "localProductScore": "0.000",
+                              "localSizeMatch": "false",
+                              "localOcrExcerpt": "",
+                              "localVerifierVersion": "local-ocr-rules-v1",
+                              "localVerifiedAt": generated_at,
+                              "localVerificationReason": f"Verifier error: {type(exc).__name__}",
+                          }
+                      for row, _source in group:
+                          row.update(result)
+                          decisions[result["localVerificationDecision"]] += 1
+                          processed_rows += 1
+                      processed_groups += 1
+              if time.monotonic() >= deadline:
+                  budget_reached = True
+                  break
+          print(f"Completed groups: {processed_groups}")
+          if budget_reached:
+              print(f"Safety budget reached after {processed_rows} rows; saving partial checkpoint")
 
           with review_path.open("w", encoding="utf-8", newline="") as f:
               writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -276,6 +307,9 @@ jobs:
               "verifier": "local-ocr-rules-v1",
               "totalRows": len(review_rows),
               "processedThisRun": processed_rows,
+              "completedGroupsThisRun": processed_groups,
+              "budgetReached": budget_reached,
+              "budgetMinutes": budget_minutes,
               "decisionCountsThisRun": dict(decisions),
               "remainingCandidates": remaining_rows,
               "generatedAt": generated_at,
