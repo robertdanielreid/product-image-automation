@@ -75,7 +75,7 @@ jobs:
             mkdir -p /tmp/gemini-checkpoint
 
             if gh run download "${{ inputs.resume_run_id }}" --name gemini-checkpoint --dir /tmp/gemini-checkpoint --repo "${{ github.repository }}"; then
-              for name in manual_visual_review.csv gemini_verification_summary.json all_20076_acquisition_results.csv rejected_candidates.csv; do
+              for name in manual_visual_review.csv gemini_verification_summary.json all_20076_acquisition_results.csv rejected_candidates.csv image_hydration_skipped.csv; do
                 source_file="$(find /tmp/gemini-checkpoint -type f -name "$name" -print -quit || true)"
                 if [ -n "$source_file" ]; then
                   cp "$source_file" "output/$name"
@@ -265,7 +265,41 @@ jobs:
           for path, error in failed[:20]:
               print(f"  hydration failed: {path} -> {error}", flush=True)
           if failed:
-              raise SystemExit(f"{len(failed)} image files could not be restored.")
+              failed_by_path = {path: error for path, error in failed}
+              skipped_rows = []
+              result_fields = list(rows[0]) if rows else []
+              for field in ("hydrationStatus", "hydrationError"):
+                  if field not in result_fields:
+                      result_fields.append(field)
+
+              for row in rows:
+                  relative = Path(row.get("stagingPath", ""))
+                  image_path = relative if relative.is_absolute() else store / relative
+                  error = failed_by_path.get(str(image_path))
+                  if error is None:
+                      continue
+                  row["status"] = "SKIPPED_IMAGE_UNAVAILABLE"
+                  row["hydrationStatus"] = "SKIPPED"
+                  row["hydrationError"] = error
+                  skipped_rows.append({
+                      "immutableKey": row.get("immutableKey", ""),
+                      "stagingPath": row.get("stagingPath", ""),
+                      "resolvedImageUrl": row.get("resolvedImageUrl", ""),
+                      "error": error,
+                  })
+
+              with results_path.open("w", encoding="utf-8", newline="") as f:
+                  writer = csv.DictWriter(f, fieldnames=result_fields)
+                  writer.writeheader()
+                  writer.writerows(rows)
+
+              with Path("output/image_hydration_skipped.csv").open("w", encoding="utf-8", newline="") as f:
+                  report_fields = ["immutableKey", "stagingPath", "resolvedImageUrl", "error"]
+                  writer = csv.DictWriter(f, fieldnames=report_fields)
+                  writer.writeheader()
+                  writer.writerows(skipped_rows)
+
+              print(f"Skipped {len(skipped_rows)} unavailable image rows; continuing with the rehydrated set.", flush=True)
 
           PY
 
@@ -289,15 +323,17 @@ jobs:
               if not row.get("stagingPath") or not image_path.exists():
                   missing.append((row.get("immutableKey", ""), row.get("stagingPath", "")))
 
-          print(f"Staged acquisition rows: {len(staged)}")
-          print(f"Missing staged image files: {len(missing)}")
+          skipped = [row for row in rows if row.get("status", "") == "SKIPPED_IMAGE_UNAVAILABLE"]
+          print(f"Staged acquisition rows available for Gemini: {len(staged)}")
+          print(f"Skipped unavailable image rows: {len(skipped)}")
+          print(f"Missing non-skipped staged image files: {len(missing)}")
           for key, path in missing[:20]:
               print(f"  missing: {key} -> {path}")
 
           if not staged:
               raise SystemExit("No staged acquisition rows were restored; refusing to spend Gemini quota.")
           if missing:
-              raise SystemExit(f"{len(missing)} staged image files are missing; refusing to run incomplete verification.")
+              raise SystemExit(f"{len(missing)} non-skipped staged image files are missing.")
           PY
 
       - name: Save prepared staging image set
@@ -328,6 +364,7 @@ jobs:
             output/gemini_verification_summary.json
             output/all_20076_acquisition_results.csv
             output/rejected_candidates.csv
+            output/image_hydration_skipped.csv
           if-no-files-found: warn
           retention-days: 14
 
