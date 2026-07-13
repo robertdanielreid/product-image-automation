@@ -83,6 +83,8 @@ jobs:
 
           python3 - <<'PY'
           import csv
+          import time
+          from collections import defaultdict
           from concurrent.futures import ThreadPoolExecutor, as_completed
           from io import BytesIO
           from pathlib import Path
@@ -95,7 +97,7 @@ jobs:
           with results_path.open(encoding="utf-8-sig", newline="") as f:
               rows = list(csv.DictReader(f))
 
-          missing = []
+          by_url = defaultdict(list)
           for row in rows:
               if not row.get("status", "").startswith("STAGED"):
                   continue
@@ -106,42 +108,62 @@ jobs:
               relative_path = Path(relative)
               destination = relative_path if relative_path.is_absolute() else store / relative_path
               if not destination.exists():
-                  missing.append((destination, url))
+                  by_url[url].append(destination)
 
-          print(f"Need to rehydrate {len(missing)} acquired image files from recorded URLs", flush=True)
+          total_files = sum(len(destinations) for destinations in by_url.values())
+          print(
+              f"Need to rehydrate {total_files} image files from {len(by_url)} unique recorded URLs",
+              flush=True,
+          )
 
-          def hydrate(item):
-              destination, url = item
-              for attempt in range(3):
+          def hydrate(url):
+              for attempt in range(6):
                   try:
                       response = requests.get(
                           url,
                           headers={"User-Agent": "product-image-automation/gemini-verification"},
-                          timeout=45,
+                          timeout=60,
                       )
+                      if response.status_code == 429:
+                          retry_after = response.headers.get("Retry-After", "")
+                          try:
+                              delay = max(10, int(retry_after))
+                          except ValueError:
+                              delay = min(120, 15 * (attempt + 1))
+                          print(f"Rate limited; retrying in {delay}s", flush=True)
+                          time.sleep(delay)
+                          continue
                       response.raise_for_status()
                       data = response.content
                       with Image.open(BytesIO(data)) as image:
                           image.verify()
-                      destination.parent.mkdir(parents=True, exist_ok=True)
-                      destination.write_bytes(data)
-                      return True, str(destination), ""
+                      return True, data, ""
                   except Exception as exc:
-                      if attempt == 2:
-                          return False, str(destination), str(exc)
+                      if attempt == 5:
+                          return False, b"", str(exc)
+                      time.sleep(min(60, 3 * (attempt + 1)))
+              return False, b"", "exhausted retries"
 
           succeeded = 0
           failed = []
-          with ThreadPoolExecutor(max_workers=16) as pool:
-              futures = [pool.submit(hydrate, item) for item in missing]
+          unique_urls = list(by_url)
+          with ThreadPoolExecutor(max_workers=2) as pool:
+              futures = {pool.submit(hydrate, url): url for url in unique_urls}
               for index, future in enumerate(as_completed(futures), 1):
-                  ok, path, error = future.result()
+                  url = futures[future]
+                  ok, data, error = future.result()
                   if ok:
-                      succeeded += 1
+                      for destination in by_url[url]:
+                          destination.parent.mkdir(parents=True, exist_ok=True)
+                          destination.write_bytes(data)
+                          succeeded += 1
                   else:
-                      failed.append((path, error))
-                  if index % 100 == 0:
-                      print(f"Hydrated {index}/{len(missing)}", flush=True)
+                      failed.extend((str(destination), error) for destination in by_url[url])
+                  if index % 10 == 0:
+                      print(
+                          f"Hydrated {index}/{len(unique_urls)} unique URLs; files restored: {succeeded}",
+                          flush=True,
+                      )
 
           print(f"Rehydrated {succeeded}; failed {len(failed)}", flush=True)
           for path, error in failed[:20]:
