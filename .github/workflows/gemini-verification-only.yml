@@ -1,0 +1,243 @@
+name: Gemini image verification (checkpointed)
+
+on:
+  workflow_dispatch:
+    inputs:
+      acquisition_artifact_id:
+        description: "Artifact ID containing the completed acquisition outputs"
+        required: true
+        default: "8268061182"
+        type: string
+      staging_run_id:
+        description: "Workflow run ID containing the staged image chunks"
+        required: true
+        default: "28997395080"
+        type: string
+      batch_size:
+        description: "Gemini requests per checkpoint batch"
+        required: true
+        default: "200"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gemini-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-v33.txt
+
+      - name: Restore completed acquisition outputs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p output webstore_image_output/staging
+          gh api --method GET \
+            "/repos/${{ github.repository }}/actions/artifacts/${{ inputs.acquisition_artifact_id }}/zip" \
+            > /tmp/reacquisition-results.zip
+          unzip -o /tmp/reacquisition-results.zip -d output
+          test -s output/all_20076_acquisition_results.csv
+          test -s output/manual_visual_review.csv
+          test -s data/all_20076_strict_image_audit.csv
+
+      - name: Restore staged product images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p cloud-output
+          for i in $(seq 0 19); do
+            gh run download "${{ inputs.staging_run_id }}" \
+              --name "product-images-chunk-$i" \
+              --dir "cloud-output/chunk-$i" \
+              --repo "${{ github.repository }}" 2>/dev/null || true
+          done
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          staging = Path("webstore_image_output/staging")
+          restored = 0
+          for chunk_dir in sorted(Path("cloud-output").glob("chunk-*")):
+              for jpg in chunk_dir.glob("**/*.jpg"):
+                  destination = staging / jpg.name
+                  if not destination.exists():
+                      destination.write_bytes(jpg.read_bytes())
+                      restored += 1
+          print(f"Restored {restored} staged images")
+          PY
+
+          python3 - <<'PY'
+          import csv
+          import time
+          from collections import defaultdict
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from io import BytesIO
+          from pathlib import Path
+
+          import requests
+          from PIL import Image
+
+          results_path = Path("output/all_20076_acquisition_results.csv")
+          store = Path("webstore_image_output")
+          with results_path.open(encoding="utf-8-sig", newline="") as f:
+              rows = list(csv.DictReader(f))
+
+          by_url = defaultdict(list)
+          for row in rows:
+              if not row.get("status", "").startswith("STAGED"):
+                  continue
+              relative = row.get("stagingPath", "").strip()
+              url = row.get("resolvedImageUrl", "").strip()
+              if not relative or not url:
+                  continue
+              relative_path = Path(relative)
+              destination = relative_path if relative_path.is_absolute() else store / relative_path
+              if not destination.exists():
+                  by_url[url].append(destination)
+
+          total_files = sum(len(destinations) for destinations in by_url.values())
+          print(
+              f"Need to rehydrate {total_files} image files from {len(by_url)} unique recorded URLs",
+              flush=True,
+          )
+
+          def hydrate(url):
+              for attempt in range(10):
+                  try:
+                      response = requests.get(
+                          url,
+                          headers={"User-Agent": "product-image-automation/gemini-verification"},
+                          timeout=60,
+                      )
+                      if response.status_code == 429:
+                          retry_after = response.headers.get("Retry-After", "")
+                          try:
+                              delay = max(30, int(retry_after))
+                          except ValueError:
+                              delay = min(180, 30 * (attempt + 1))
+                          print(f"Rate limited; retrying in {delay}s", flush=True)
+                          time.sleep(delay)
+                          continue
+                      response.raise_for_status()
+                      data = response.content
+                      with Image.open(BytesIO(data)) as image:
+                          image.verify()
+                      return True, data, ""
+                  except Exception as exc:
+                      if attempt == 9:
+                          return False, b"", str(exc)
+                      time.sleep(min(60, 3 * (attempt + 1)))
+              return False, b"", "exhausted retries"
+
+          succeeded = 0
+          failed = []
+          unique_urls = list(by_url)
+          last_request_at = 0.0
+          for index, url in enumerate(unique_urls, 1):
+              wait = max(0.0, 1.0 - (time.monotonic() - last_request_at))
+              if wait:
+                  time.sleep(wait)
+              last_request_at = time.monotonic()
+              ok, data, error = hydrate(url)
+              if ok:
+                  for destination in by_url[url]:
+                      destination.parent.mkdir(parents=True, exist_ok=True)
+                      destination.write_bytes(data)
+                      succeeded += 1
+              else:
+                  failed.extend((str(destination), error) for destination in by_url[url])
+              if index % 10 == 0:
+                  print(
+                      f"Hydrated {index}/{len(unique_urls)} unique URLs; files restored: {succeeded}",
+                      flush=True,
+                  )
+
+          print(f"Rehydrated {succeeded}; failed {len(failed)}", flush=True)
+          for path, error in failed[:20]:
+              print(f"  hydration failed: {path} -> {error}", flush=True)
+          PY
+
+      - name: Validate acquisition/image handoff
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+
+          results_path = Path("output/all_20076_acquisition_results.csv")
+          staging = Path("webstore_image_output/staging")
+          with results_path.open(encoding="utf-8-sig", newline="") as f:
+              rows = list(csv.DictReader(f))
+
+          staged = [row for row in rows if row.get("status", "").startswith("STAGED")]
+          missing = []
+          for row in staged:
+              relative = Path(row.get("stagingPath", ""))
+              image_path = relative if relative.is_absolute() else Path("webstore_image_output") / relative
+              if not row.get("stagingPath") or not image_path.exists():
+                  missing.append((row.get("immutableKey", ""), row.get("stagingPath", "")))
+
+          print(f"Staged acquisition rows: {len(staged)}")
+          print(f"Missing staged image files: {len(missing)}")
+          for key, path in missing[:20]:
+              print(f"  missing: {key} -> {path}")
+
+          if not staged:
+              raise SystemExit("No staged acquisition rows were restored; refusing to spend Gemini quota.")
+          if missing:
+              raise SystemExit(f"{len(missing)} staged image files are missing; refusing to run incomplete verification.")
+          PY
+
+      - name: Run Gemini verification with checkpoints
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          batch_size="${{ inputs.batch_size }}"
+          max_batches=120
+
+          for batch in $(seq 1 "$max_batches"); do
+            log_file="/tmp/gemini-checkpoint-$batch.log"
+            echo "Starting Gemini checkpoint batch $batch/$max_batches (max requests: $batch_size)"
+            python3 scripts/verify_staged_images_gemini.py \
+              --package-root . \
+              --store-root webstore_image_output \
+              --model gemini-3.1-flash-lite-preview \
+              --workers 3 \
+              --rps 2 \
+              --resume \
+              --max-requests "$batch_size" 2>&1 | tee "$log_file"
+
+            if grep -q "Gemini verification pending: 0" "$log_file"; then
+              echo "All pending Gemini verification rows are complete."
+              break
+            fi
+          done
+
+      - name: Upload Gemini checkpoints and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-verification-results
+          path: |
+            output/manual_visual_review.csv
+            output/gemini_verification_summary.json
+            output/all_20076_acquisition_results.csv
+            output/rejected_candidates.csv
+          if-no-files-found: warn
+          retention-days: 30
