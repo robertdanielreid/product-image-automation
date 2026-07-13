@@ -133,21 +133,40 @@ jobs:
 
           python3 - <<'PY'
           import csv
+          import hashlib
+          import shutil
           import time
           from collections import defaultdict
           from concurrent.futures import ThreadPoolExecutor, as_completed
           from io import BytesIO
           from pathlib import Path
+          from random import uniform
+          from threading import Lock
+          from urllib.parse import urlparse
 
           import requests
           from PIL import Image
 
           results_path = Path("output/all_20076_acquisition_results.csv")
           store = Path("webstore_image_output")
+          staging = store / "staging"
           with results_path.open(encoding="utf-8-sig", newline="") as f:
               rows = list(csv.DictReader(f))
 
+          # Reuse bytes already restored under a different product filename when the
+          # acquisition recorded the same content hash. This avoids needless requests
+          # for duplicate source images and makes restarts safe.
+          existing_by_sha = {}
+          for existing in staging.rglob("*.jpg"):
+              try:
+                  with existing.open("rb") as source:
+                      digest = hashlib.file_digest(source, "sha256").hexdigest()
+              except OSError:
+                  continue
+              existing_by_sha.setdefault(digest, existing)
+
           by_url = defaultdict(list)
+          local_reused = 0
           for row in rows:
               if not row.get("status", "").startswith("STAGED"):
                   continue
@@ -157,44 +176,78 @@ jobs:
                   continue
               relative_path = Path(relative)
               destination = relative_path if relative_path.is_absolute() else store / relative_path
-              if not destination.exists():
-                  by_url[url].append(destination)
+              if destination.exists():
+                  continue
 
-          total_files = sum(len(destinations) for destinations in by_url.values())
+              expected_sha = row.get("sha256", "").strip()
+              cached = existing_by_sha.get(expected_sha) if expected_sha else None
+              if cached and cached != destination:
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(cached, destination)
+                  local_reused += 1
+                  continue
+              by_url[url].append(destination)
+
+          total_files = local_reused + sum(len(destinations) for destinations in by_url.values())
           unique_urls = list(by_url)
-          print(f"Need to rehydrate {total_files} image files from {len(unique_urls)} unique recorded URLs", flush=True)
+          print(f"Reused {local_reused} staged files from the local content cache", flush=True)
+          print(f"Need to rehydrate {total_files - local_reused} image files from {len(unique_urls)} unique recorded URLs", flush=True)
+
+          # Keep a conservative per-host request cadence. Wikimedia and several
+          # commerce CDNs return 429s when several workers hit them together.
+          host_locks = defaultdict(Lock)
+          last_request_at = defaultdict(float)
+          host_interval = 0.75
+
+          def pace(host):
+              with host_locks[host]:
+                  now = time.monotonic()
+                  wait_for = last_request_at[host] + host_interval - now
+                  if wait_for > 0:
+                      time.sleep(wait_for)
+                  last_request_at[host] = time.monotonic()
+
+          retryable_statuses = {403, 408, 425, 429, 500, 502, 503, 504}
+          headers = {
+              "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+              "User-Agent": "product-image-automation/1.0 (+https://github.com/robertdanielreid/product-image-automation)",
+          }
+
+          def retry_delay(attempt, response=None):
+              retry_after = response.headers.get("Retry-After", "") if response is not None else ""
+              try:
+                  return min(180.0, max(15.0, float(retry_after))) + uniform(0, 2)
+              except (TypeError, ValueError):
+                  return min(180.0, max(5.0, 2.0 ** attempt)) + uniform(0, 2)
 
           def hydrate(item):
               url, destinations = item
-              for attempt in range(6):
+              host = urlparse(url).netloc.lower()
+              last_error = "exhausted retries"
+              for attempt in range(8):
                   try:
-                      response = requests.get(
-                          url,
-                          headers={"User-Agent": "product-image-automation/gemini-verification"},
-                          timeout=(10, 30),
-                      )
-                      if response.status_code == 429:
-                          retry_after = response.headers.get("Retry-After", "")
-                          try:
-                              delay = max(15, int(retry_after))
-                          except (TypeError, ValueError):
-                              delay = min(60, 5 * (attempt + 1))
-                          time.sleep(delay)
-                          continue
+                      pace(host)
+                      response = requests.get(url, headers=headers, timeout=(15, 45))
+                      if response.status_code in retryable_statuses:
+                          last_error = f"HTTP {response.status_code}"
+                          if attempt < 7:
+                              time.sleep(retry_delay(attempt, response))
+                              continue
+                          break
                       response.raise_for_status()
                       data = response.content
                       with Image.open(BytesIO(data)) as image:
                           image.verify()
                       return url, True, data, ""
                   except Exception as exc:
-                      if attempt == 5:
-                          return url, False, b"", str(exc)
-                      time.sleep(min(45, 3 * (attempt + 1)))
-              return url, False, b"", "exhausted retries"
+                      last_error = str(exc)
+                      if attempt < 7:
+                          time.sleep(retry_delay(attempt))
+              return url, False, b"", last_error
 
-          succeeded = 0
+          succeeded = local_reused
           failed = []
-          with ThreadPoolExecutor(max_workers=6) as pool:
+          with ThreadPoolExecutor(max_workers=4) as pool:
               futures = [pool.submit(hydrate, item) for item in by_url.items()]
               for index, future in enumerate(as_completed(futures), 1):
                   url, ok, data, error = future.result()
@@ -213,6 +266,7 @@ jobs:
               print(f"  hydration failed: {path} -> {error}", flush=True)
           if failed:
               raise SystemExit(f"{len(failed)} image files could not be restored.")
+
           PY
 
       - name: Validate acquisition/image handoff
