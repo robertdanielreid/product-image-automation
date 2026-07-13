@@ -1,4 +1,5 @@
-name: Gemini image verification (checkpointed)
+
+name: Gemini image verification (overnight checkpoints)
 
 on:
   workflow_dispatch:
@@ -13,20 +14,29 @@ on:
         required: true
         default: "28997395080"
         type: string
+      resume_run_id:
+        description: "Optional prior checkpoint run ID to resume from"
+        required: false
+        default: ""
+        type: string
       batch_size:
-        description: "Gemini requests per checkpoint batch"
+        description: "Gemini requests per workflow checkpoint"
         required: true
-        default: "200"
+        default: "150"
         type: string
 
 permissions:
   contents: read
-  actions: read
+  actions: write
+
+concurrency:
+  group: gemini-overnight-${{ inputs.acquisition_artifact_id }}
+  cancel-in-progress: false
 
 jobs:
   gemini-verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 340
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
@@ -46,25 +56,65 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output webstore_image_output/staging
-          gh api --method GET \
-            "/repos/${{ github.repository }}/actions/artifacts/${{ inputs.acquisition_artifact_id }}/zip" \
-            > /tmp/reacquisition-results.zip
+          gh api --method GET "/repos/${{ github.repository }}/actions/artifacts/${{ inputs.acquisition_artifact_id }}/zip" > /tmp/reacquisition-results.zip
           unzip -o /tmp/reacquisition-results.zip -d output
           test -s output/all_20076_acquisition_results.csv
           test -s output/manual_visual_review.csv
           test -s data/all_20076_strict_image_audit.csv
 
-      - name: Restore staged product images
+      - name: Restore durable checkpoint and prepared staging
+        id: restore_outputs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          mkdir -p cloud-output
-          for i in $(seq 0 19); do
-            gh run download "${{ inputs.staging_run_id }}" \
-              --name "product-images-chunk-$i" \
-              --dir "cloud-output/chunk-$i" \
-              --repo "${{ github.repository }}" 2>/dev/null || true
+          prepared_restored=false
+
+          if [ -n "${{ inputs.resume_run_id }}" ]; then
+            rm -rf /tmp/gemini-checkpoint /tmp/prepared-staging
+            mkdir -p /tmp/gemini-checkpoint
+
+            if gh run download "${{ inputs.resume_run_id }}" --name gemini-checkpoint --dir /tmp/gemini-checkpoint --repo "${{ github.repository }}"; then
+              for name in manual_visual_review.csv gemini_verification_summary.json all_20076_acquisition_results.csv rejected_candidates.csv; do
+                source_file="$(find /tmp/gemini-checkpoint -type f -name "$name" -print -quit || true)"
+                if [ -n "$source_file" ]; then
+                  cp "$source_file" "output/$name"
+                fi
+              done
+              echo "Restored durable Gemini checkpoint from run ${{ inputs.resume_run_id }}"
+            else
+              echo "No downloadable Gemini checkpoint was found; continuing from acquisition outputs."
+            fi
+
+            if gh run download "${{ inputs.resume_run_id }}" --name prepared-staging-images --dir /tmp/prepared-staging --repo "${{ github.repository }}"; then
+              first_image="$(find /tmp/prepared-staging -type f -name '*.jpg' -print -quit || true)"
+              if [ -n "$first_image" ]; then
+                find /tmp/prepared-staging -type f -name '*.jpg' -exec cp -n {} webstore_image_output/staging/ \;
+                prepared_restored=true
+                echo "Restored prepared staging image set from run ${{ inputs.resume_run_id }}"
+              fi
+            else
+              echo "No prepared staging artifact was found; rebuilding staging from durable chunks."
+            fi
+          fi
+
+          echo "prepared_restored=$prepared_restored" >> "$GITHUB_OUTPUT"
+
+      - name: Restore and rehydrate staged product images
+        if: steps.restore_outputs.outputs.prepared_restored != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf cloud-output
+          mkdir -p cloud-output webstore_image_output/staging
+
+          for first in 0 4 8 12 16; do
+            for offset in 0 1 2 3; do
+              i=$((first + offset))
+              gh run download "${{ inputs.staging_run_id }}" --name "product-images-chunk-$i" --dir "cloud-output/chunk-$i" --repo "${{ github.repository }}" >"/tmp/product-images-chunk-$i.log" 2>&1 &
+            done
+            wait || true
           done
 
           python3 - <<'PY'
@@ -73,7 +123,7 @@ jobs:
           staging = Path("webstore_image_output/staging")
           restored = 0
           for chunk_dir in sorted(Path("cloud-output").glob("chunk-*")):
-              for jpg in chunk_dir.glob("**/*.jpg"):
+              for jpg in chunk_dir.rglob("*.jpg"):
                   destination = staging / jpg.name
                   if not destination.exists():
                       destination.write_bytes(jpg.read_bytes())
@@ -111,65 +161,58 @@ jobs:
                   by_url[url].append(destination)
 
           total_files = sum(len(destinations) for destinations in by_url.values())
-          print(
-              f"Need to rehydrate {total_files} image files from {len(by_url)} unique recorded URLs",
-              flush=True,
-          )
+          unique_urls = list(by_url)
+          print(f"Need to rehydrate {total_files} image files from {len(unique_urls)} unique recorded URLs", flush=True)
 
-          def hydrate(url):
-              for attempt in range(10):
+          def hydrate(item):
+              url, destinations = item
+              for attempt in range(6):
                   try:
                       response = requests.get(
                           url,
                           headers={"User-Agent": "product-image-automation/gemini-verification"},
-                          timeout=60,
+                          timeout=(10, 30),
                       )
                       if response.status_code == 429:
                           retry_after = response.headers.get("Retry-After", "")
                           try:
-                              delay = max(30, int(retry_after))
-                          except ValueError:
-                              delay = min(180, 30 * (attempt + 1))
-                          print(f"Rate limited; retrying in {delay}s", flush=True)
+                              delay = max(15, int(retry_after))
+                          except (TypeError, ValueError):
+                              delay = min(60, 5 * (attempt + 1))
                           time.sleep(delay)
                           continue
                       response.raise_for_status()
                       data = response.content
                       with Image.open(BytesIO(data)) as image:
                           image.verify()
-                      return True, data, ""
+                      return url, True, data, ""
                   except Exception as exc:
-                      if attempt == 9:
-                          return False, b"", str(exc)
-                      time.sleep(min(60, 3 * (attempt + 1)))
-              return False, b"", "exhausted retries"
+                      if attempt == 5:
+                          return url, False, b"", str(exc)
+                      time.sleep(min(45, 3 * (attempt + 1)))
+              return url, False, b"", "exhausted retries"
 
           succeeded = 0
           failed = []
-          unique_urls = list(by_url)
-          last_request_at = 0.0
-          for index, url in enumerate(unique_urls, 1):
-              wait = max(0.0, 1.0 - (time.monotonic() - last_request_at))
-              if wait:
-                  time.sleep(wait)
-              last_request_at = time.monotonic()
-              ok, data, error = hydrate(url)
-              if ok:
-                  for destination in by_url[url]:
-                      destination.parent.mkdir(parents=True, exist_ok=True)
-                      destination.write_bytes(data)
-                      succeeded += 1
-              else:
-                  failed.extend((str(destination), error) for destination in by_url[url])
-              if index % 10 == 0:
-                  print(
-                      f"Hydrated {index}/{len(unique_urls)} unique URLs; files restored: {succeeded}",
-                      flush=True,
-                  )
+          with ThreadPoolExecutor(max_workers=6) as pool:
+              futures = [pool.submit(hydrate, item) for item in by_url.items()]
+              for index, future in enumerate(as_completed(futures), 1):
+                  url, ok, data, error = future.result()
+                  if ok:
+                      for destination in by_url[url]:
+                          destination.parent.mkdir(parents=True, exist_ok=True)
+                          destination.write_bytes(data)
+                          succeeded += 1
+                  else:
+                      failed.extend((str(destination), error) for destination in by_url[url])
+                  if index % 10 == 0:
+                      print(f"Hydrated {index}/{len(unique_urls)} unique URLs; files restored: {succeeded}", flush=True)
 
           print(f"Rehydrated {succeeded}; failed {len(failed)}", flush=True)
           for path, error in failed[:20]:
               print(f"  hydration failed: {path} -> {error}", flush=True)
+          if failed:
+              raise SystemExit(f"{len(failed)} image files could not be restored.")
           PY
 
       - name: Validate acquisition/image handoff
@@ -203,41 +246,81 @@ jobs:
               raise SystemExit(f"{len(missing)} staged image files are missing; refusing to run incomplete verification.")
           PY
 
-      - name: Run Gemini verification with checkpoints
+      - name: Save prepared staging image set
+        if: steps.restore_outputs.outputs.prepared_restored != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepared-staging-images
+          path: webstore_image_output/staging
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Run one Gemini verification checkpoint
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
-          batch_size="${{ inputs.batch_size }}"
-          max_batches=120
+          echo "Running one bounded Gemini checkpoint of ${{ inputs.batch_size }} requests."
+          python3 scripts/verify_staged_images_gemini.py --package-root . --store-root webstore_image_output --model gemini-3.1-flash-lite-preview --workers 3 --rps 2 --resume --max-requests "${{ inputs.batch_size }}"
 
-          for batch in $(seq 1 "$max_batches"); do
-            log_file="/tmp/gemini-checkpoint-$batch.log"
-            echo "Starting Gemini checkpoint batch $batch/$max_batches (max requests: $batch_size)"
-            python3 scripts/verify_staged_images_gemini.py \
-              --package-root . \
-              --store-root webstore_image_output \
-              --model gemini-3.1-flash-lite-preview \
-              --workers 3 \
-              --rps 2 \
-              --resume \
-              --max-requests "$batch_size" 2>&1 | tee "$log_file"
-
-            if grep -q "Gemini verification pending: 0" "$log_file"; then
-              echo "All pending Gemini verification rows are complete."
-              break
-            fi
-          done
-
-      - name: Upload Gemini checkpoints and results
+      - name: Save durable Gemini checkpoint
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gemini-verification-results
+          name: gemini-checkpoint
           path: |
             output/manual_visual_review.csv
             output/gemini_verification_summary.json
             output/all_20076_acquisition_results.csv
             output/rejected_candidates.csv
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 14
+
+      - name: Queue next Gemini checkpoint
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          pending="$(python3 - <<'PY'
+          import csv
+          from pathlib import Path
+
+          done = {
+              "APPROVED_EXACT_PRODUCT_PACKAGE",
+              "REJECTED_WRONG_OR_UNCERTAIN",
+              "REVIEW_REQUIRED",
+          }
+          with Path("data/all_20076_strict_image_audit.csv").open(encoding="utf-8-sig", newline="") as f:
+              audit = list(csv.DictReader(f))
+          with Path("output/all_20076_acquisition_results.csv").open(encoding="utf-8-sig", newline="") as f:
+              results = {row["immutableKey"]: row for row in csv.DictReader(f)}
+          with Path("output/manual_visual_review.csv").open(encoding="utf-8-sig", newline="") as f:
+              review = {row["immutableKey"]: row for row in csv.DictReader(f)}
+
+          remaining = 0
+          for row in audit:
+              result = results.get(row["immutableKey"])
+              decision = review.get(row["immutableKey"], {}).get("manualVisualDecision", "")
+              if result and result.get("status", "").startswith("STAGED") and decision not in done:
+                  remaining += 1
+          print(remaining)
+          PY
+          )"
+          echo "Gemini verification remaining: $pending"
+          if [ "$pending" -eq 0 ]; then
+            echo "All staged rows have a terminal Gemini/manual decision. Overnight chain is complete."
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
+            if gh workflow run .github/workflows/gemini-verification-only.yml --repo "${{ github.repository }}" --ref main -f acquisition_artifact_id="${{ inputs.acquisition_artifact_id }}" -f staging_run_id="${{ inputs.staging_run_id }}" -f resume_run_id="${{ github.run_id }}" -f batch_size="${{ inputs.batch_size }}"; then
+              echo "Queued the next checkpoint from run ${{ github.run_id }}."
+              exit 0
+            fi
+            echo "Checkpoint dispatch attempt $attempt failed; retrying."
+            sleep $((attempt * 10))
+          done
+          echo "Unable to queue the next checkpoint. The durable checkpoint artifact is available for manual resume."
+          exit 1
