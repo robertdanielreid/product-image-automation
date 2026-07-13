@@ -79,6 +79,72 @@ jobs:
                       destination.write_bytes(jpg.read_bytes())
                       restored += 1
           print(f"Restored {restored} staged images")
+
+          python3 - <<'PY'
+          import csv
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from io import BytesIO
+          from pathlib import Path
+
+          import requests
+          from PIL import Image
+
+          results_path = Path("output/all_20076_acquisition_results.csv")
+          store = Path("webstore_image_output")
+          with results_path.open(encoding="utf-8-sig", newline="") as f:
+              rows = list(csv.DictReader(f))
+
+          missing = []
+          for row in rows:
+              if not row.get("status", "").startswith("STAGED"):
+                  continue
+              relative = row.get("stagingPath", "").strip()
+              url = row.get("resolvedImageUrl", "").strip()
+              if not relative or not url:
+                  continue
+              relative_path = Path(relative)
+              destination = relative_path if relative_path.is_absolute() else store / relative_path
+              if not destination.exists():
+                  missing.append((destination, url))
+
+          print(f"Need to rehydrate {len(missing)} acquired image files from recorded URLs", flush=True)
+
+          def hydrate(item):
+              destination, url = item
+              for attempt in range(3):
+                  try:
+                      response = requests.get(
+                          url,
+                          headers={"User-Agent": "product-image-automation/gemini-verification"},
+                          timeout=45,
+                      )
+                      response.raise_for_status()
+                      data = response.content
+                      with Image.open(BytesIO(data)) as image:
+                          image.verify()
+                      destination.parent.mkdir(parents=True, exist_ok=True)
+                      destination.write_bytes(data)
+                      return True, str(destination), ""
+                  except Exception as exc:
+                      if attempt == 2:
+                          return False, str(destination), str(exc)
+
+          succeeded = 0
+          failed = []
+          with ThreadPoolExecutor(max_workers=16) as pool:
+              futures = [pool.submit(hydrate, item) for item in missing]
+              for index, future in enumerate(as_completed(futures), 1):
+                  ok, path, error = future.result()
+                  if ok:
+                      succeeded += 1
+                  else:
+                      failed.append((path, error))
+                  if index % 100 == 0:
+                      print(f"Hydrated {index}/{len(missing)}", flush=True)
+
+          print(f"Rehydrated {succeeded}; failed {len(failed)}", flush=True)
+          for path, error in failed[:20]:
+              print(f"  hydration failed: {path} -> {error}", flush=True)
           PY
 
       - name: Validate acquisition/image handoff
