@@ -79,6 +79,7 @@ jobs:
                       destination.write_bytes(jpg.read_bytes())
                       restored += 1
           print(f"Restored {restored} staged images")
+          PY
 
           python3 - <<'PY'
           import csv
