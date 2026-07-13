@@ -1,0 +1,319 @@
+name: Minimal-token local image verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      acquisition_artifact_id:
+        description: "Artifact ID containing the completed acquisition outputs"
+        required: true
+        default: "8268061182"
+        type: string
+      checkpoint_run_id:
+        description: "Prior Gemini or local-token checkpoint run ID"
+        required: true
+        default: "29230477005"
+        type: string
+      prepared_staging_run_id:
+        description: "Run ID containing the prepared staging image artifact"
+        required: true
+        default: "29230477005"
+        type: string
+      batch_size:
+        description: "Rows per local verification checkpoint"
+        required: true
+        default: "500"
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: minimal-token-verification-\${{ inputs.acquisition_artifact_id }}
+  cancel-in-progress: false
+
+jobs:
+  local-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install local OCR verifier
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+          python -m pip install --disable-pip-version-check --no-input pillow pytesseract
+
+      - name: Restore acquisition and prior checkpoint
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p output webstore_image_output/staging /tmp/checkpoint
+          gh api --method GET "/repos/\${{ github.repository }}/actions/artifacts/\${{ inputs.acquisition_artifact_id }}/zip" > /tmp/acquisition.zip
+          unzip -oq /tmp/acquisition.zip -d output
+          rm -rf /tmp/checkpoint/*
+          if gh run download "\${{ inputs.checkpoint_run_id }}" --name local-token-checkpoint --dir /tmp/checkpoint --repo "\${{ github.repository }}"; then
+            echo "Restored local-token checkpoint"
+          elif gh run download "\${{ inputs.checkpoint_run_id }}" --name gemini-checkpoint --dir /tmp/checkpoint --repo "\${{ github.repository }}"; then
+            echo "Restored Gemini checkpoint as the starting state"
+          else
+            echo "No prior checkpoint artifact found"
+          fi
+
+          for name in manual_visual_review.csv gemini_verification_summary.json all_20076_acquisition_results.csv rejected_candidates.csv image_hydration_skipped.csv; do
+            source_file="$(find /tmp/checkpoint -type f -name "$name" -print -quit || true)"
+            if [ -n "$source_file" ]; then
+              cp "$source_file" "output/$name"
+            fi
+          done
+
+          test -s output/all_20076_acquisition_results.csv
+          test -s output/manual_visual_review.csv
+
+      - name: Restore prepared staging images
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/prepared-staging
+          mkdir -p /tmp/prepared-staging webstore_image_output/staging
+          gh run download "\${{ inputs.prepared_staging_run_id }}" --name prepared-staging-images --dir /tmp/prepared-staging --repo "\${{ github.repository }}"
+          count="$(find /tmp/prepared-staging -type f -name '*.jpg' | wc -l | tr -d ' ')"
+          test "$count" -gt 0
+          find /tmp/prepared-staging -type f -name '*.jpg' -exec cp -n {} webstore_image_output/staging/ \;
+          echo "Restored $count prepared staging images"
+
+      - name: Run minimal-input local verification checkpoint
+        env:
+          BATCH_SIZE: \${{ inputs.batch_size }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import csv
+          import json
+          import re
+          import unicodedata
+          from collections import Counter, defaultdict
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from datetime import datetime, timezone
+          from difflib import SequenceMatcher
+          from pathlib import Path
+
+          from PIL import Image, ImageOps
+          import pytesseract
+
+          acquisition_path = Path("output/all_20076_acquisition_results.csv")
+          review_path = Path("output/manual_visual_review.csv")
+          staging_root = Path("webstore_image_output")
+          generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+          with acquisition_path.open(encoding="utf-8-sig", newline="") as f:
+              acquisition = list(csv.DictReader(f))
+          with review_path.open(encoding="utf-8-sig", newline="") as f:
+              review_rows = list(csv.DictReader(f))
+
+          acquisition_by_key = {row.get("immutableKey", ""): row for row in acquisition}
+          extra_fields = [
+              "localVerificationDecision",
+              "localBrandScore",
+              "localProductScore",
+              "localSizeMatch",
+              "localOcrExcerpt",
+              "localVerificationReason",
+              "localVerifierVersion",
+              "localVerifiedAt",
+          ]
+          fieldnames = list(review_rows[0]) if review_rows else []
+          for field in extra_fields:
+              if field not in fieldnames:
+                  fieldnames.append(field)
+
+          def normalize(value):
+              value = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode().lower()
+              return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+          def tokens(value):
+              return [token for token in normalize(value).split() if len(token) >= 3]
+
+          filler = {"the", "and", "with", "for", "of", "from", "this", "that", "capsule", "capsules", "tablet", "tablets", "softgel", "softgels", "powder", "liquid"}
+
+          def token_hit(expected, observed):
+              if expected in observed:
+                  return True
+              if len(expected) < 4:
+                  return False
+              return any(
+                  abs(len(candidate) - len(expected)) <= 2
+                  and SequenceMatcher(None, expected, candidate).ratio() >= 0.88
+                  for candidate in observed
+              )
+
+          def numeric_match(expected_text, raw_text):
+              expected_numbers = re.findall(r"(?<!\d)\d+(?:\.\d+)?(?!\d)", normalize(expected_text))
+              if not expected_numbers:
+                  return True
+              return any(re.search(rf"(?<!\d){re.escape(number)}(?!\d)", raw_text) for number in expected_numbers)
+
+          def process_group(group):
+              representative, acquisition_row = group[0]
+              image_path = staging_root / acquisition_row.get("stagingPath", "")
+              base = {
+                  "localBrandScore": "0.000",
+                  "localProductScore": "0.000",
+                  "localSizeMatch": "false",
+                  "localOcrExcerpt": "",
+                  "localVerifierVersion": "local-ocr-rules-v1",
+                  "localVerifiedAt": generated_at,
+              }
+              if not image_path.exists():
+                  base.update({
+                      "localVerificationDecision": "LOCAL_REVIEW",
+                      "localVerificationReason": "Prepared image file is missing",
+                  })
+                  return base
+              try:
+                  with Image.open(image_path) as source:
+                      image = ImageOps.exif_transpose(source).convert("RGB")
+                      image.thumbnail((1400, 1400))
+                      ocr_text = pytesseract.image_to_string(image, config="--psm 6")
+              except Exception as exc:
+                  base.update({
+                      "localVerificationDecision": "LOCAL_REVIEW",
+                      "localVerificationReason": f"OCR error: {type(exc).__name__}",
+                  })
+                  return base
+
+              raw_text = normalize(ocr_text)
+              observed = set(raw_text.split())
+              brand_tokens = tokens(representative.get("brand", ""))
+              product_tokens = [token for token in tokens(representative.get("productName", "")) if token not in filler]
+              brand_score = sum(token_hit(token, observed) for token in brand_tokens) / len(brand_tokens) if brand_tokens else 0.0
+              product_score = sum(token_hit(token, observed) for token in product_tokens) / len(product_tokens) if product_tokens else 0.0
+              size_match = numeric_match(f"{representative.get('size', '')} {representative.get('productName', '')}", raw_text)
+              strong_match = (
+                  bool(brand_tokens)
+                  and brand_score >= 1.0
+                  and product_score >= 0.75
+                  and size_match
+                  and len(observed) >= 3
+              )
+              excerpt = " ".join(ocr_text.split())[:500]
+              base.update({
+                  "localVerificationDecision": "LOCAL_MATCH" if strong_match else "LOCAL_REVIEW",
+                  "localBrandScore": f"{brand_score:.3f}",
+                  "localProductScore": f"{product_score:.3f}",
+                  "localSizeMatch": "true" if size_match else "false",
+                  "localOcrExcerpt": excerpt,
+                  "localVerificationReason": "Brand, product, and size text matched" if strong_match else "OCR evidence was incomplete or conflicting",
+              })
+              return base
+
+          groups = defaultdict(list)
+          for row in review_rows:
+              key = row.get("immutableKey", "")
+              source = acquisition_by_key.get(key)
+              if not source or not source.get("status", "").startswith("STAGED"):
+                  continue
+              if not source.get("stagingPath", "") or row.get("localVerificationDecision", ""):
+                  continue
+              if row.get("manualVisualDecision", "") not in {"PENDING", "REVIEW_REQUIRED"}:
+                  continue
+              fingerprint = source.get("sha256", "") or source.get("perceptualHash", "") or key
+              group_key = (fingerprint, normalize(row.get("brand", "")), normalize(row.get("productName", "")), normalize(row.get("size", "")))
+              groups[group_key].append((row, source))
+
+          group_list = list(groups.values())
+          batch_groups = group_list[: max(1, int(__import__("os").environ.get("BATCH_SIZE", "500")))]
+          print(f"Eligible rows: {sum(len(items) for items in group_list)}")
+          print(f"Unique image/product groups: {len(group_list)}")
+          print(f"Groups in this checkpoint: {len(batch_groups)}")
+
+          processed_rows = 0
+          decisions = Counter()
+          with ThreadPoolExecutor(max_workers=4) as pool:
+              futures = {pool.submit(process_group, group): group for group in batch_groups}
+              for future in as_completed(futures):
+                  group = futures[future]
+                  result = future.result()
+                  for row, _source in group:
+                      row.update(result)
+                      decisions[result["localVerificationDecision"]] += 1
+                      processed_rows += 1
+
+          with review_path.open("w", encoding="utf-8", newline="") as f:
+              writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+              writer.writeheader()
+              writer.writerows(review_rows)
+
+          review_fields = ["immutableKey", "brand", "productName", "size", "status", "manualVisualDecision"] + extra_fields
+          with Path("output/local_verification_review.csv").open("w", encoding="utf-8", newline="") as f:
+              writer = csv.DictWriter(f, fieldnames=review_fields, extrasaction="ignore")
+              writer.writeheader()
+              for row in review_rows:
+                  if row.get("localVerificationDecision") == "LOCAL_REVIEW":
+                      source = acquisition_by_key.get(row.get("immutableKey", ""), {})
+                      output_row = dict(row)
+                      output_row["stagingPath"] = source.get("stagingPath", "")
+                      writer.writerow(output_row)
+
+          remaining_rows = sum(
+              1
+              for row in review_rows
+              if row.get("immutableKey", "") in acquisition_by_key
+              and acquisition_by_key[row.get("immutableKey", "")].get("status", "").startswith("STAGED")
+              and acquisition_by_key[row.get("immutableKey", "")].get("stagingPath", "")
+              and row.get("manualVisualDecision", "") in {"PENDING", "REVIEW_REQUIRED"}
+              and not row.get("localVerificationDecision", "")
+          )
+          summary = {
+              "verifier": "local-ocr-rules-v1",
+              "totalRows": len(review_rows),
+              "processedThisRun": processed_rows,
+              "decisionCountsThisRun": dict(decisions),
+              "remainingCandidates": remaining_rows,
+              "generatedAt": generated_at,
+              "tokenUsage": "0 external vision-model tokens",
+          }
+          Path("output/local_verification_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Save local verification checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-token-checkpoint
+          retention-days: 14
+          path: |
+            output/manual_visual_review.csv
+            output/all_20076_acquisition_results.csv
+            output/gemini_verification_summary.json
+            output/rejected_candidates.csv
+            output/image_hydration_skipped.csv
+            output/local_verification_summary.json
+            output/local_verification_review.csv
+
+      - name: Queue next local checkpoint
+        if: success()
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          remaining="$(python3 -c 'import json; print(json.load(open("output/local_verification_summary.json"))["remainingCandidates"])')"
+          if [ "$remaining" -gt 0 ]; then
+            gh api --method POST "/repos/\${{ github.repository }}/actions/workflows/minimal-token-verification.yml/dispatches" \
+              -f ref=main \
+              -f "inputs[acquisition_artifact_id]=\${{ inputs.acquisition_artifact_id }}" \
+              -f "inputs[checkpoint_run_id]=\${{ github.run_id }}" \
+              -f "inputs[prepared_staging_run_id]=\${{ inputs.prepared_staging_run_id }}" \
+              -f "inputs[batch_size]=\${{ inputs.batch_size }}"
+            echo "Queued next local checkpoint with $remaining rows remaining"
+          else
+            echo "Local verification complete"
+          fi
